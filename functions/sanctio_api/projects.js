@@ -33,8 +33,47 @@ const MODULES = [
 let token = null;
 let tokenUntil = 0;
 
+/* Zoho rate-limits the refresh endpoint hard — "You have made too many requests
+ * continuously" — and it counts refreshes, not API calls. In-memory caching is enough
+ * on Catalyst where the function stays warm, but a local dev server that restarts on
+ * every edit burns a refresh each time and gets locked out within an afternoon.
+ *
+ * So the token is also cached on disk locally, keyed to nothing but its expiry. Access
+ * tokens last an hour; this makes a restart free. Disabled unless a cache path is
+ * given, so the deployed function never touches a filesystem it does not own. */
+const TOKEN_CACHE = process.env.SANCTIO_TOKEN_CACHE || null;
+
+function readCachedToken() {
+  if (!TOKEN_CACHE) return null;
+  try {
+    const { access_token, until } = JSON.parse(require('fs').readFileSync(TOKEN_CACHE, 'utf8'));
+    if (access_token && Date.now() < until) return { access_token, until };
+  } catch {
+    /* no cache yet, or unreadable — fall through to a refresh */
+  }
+  return null;
+}
+
+function writeCachedToken(access_token, until) {
+  if (!TOKEN_CACHE) return;
+  try {
+    require('fs').writeFileSync(TOKEN_CACHE, JSON.stringify({ access_token, until }), {
+      mode: 0o600,
+    });
+  } catch {
+    /* cache is an optimisation, never a requirement */
+  }
+}
+
 async function accessToken() {
   if (token && Date.now() < tokenUntil) return token;
+
+  const cached = readCachedToken();
+  if (cached) {
+    token = cached.access_token;
+    tokenUntil = cached.until;
+    return token;
+  }
 
   const { ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, ZOHO_REFRESH_TOKEN } = process.env;
   if (!ZOHO_CLIENT_ID || !ZOHO_CLIENT_SECRET || !ZOHO_REFRESH_TOKEN) {
@@ -57,6 +96,7 @@ async function accessToken() {
 
   token = json.access_token;
   tokenUntil = Date.now() + (json.expires_in - 60) * 1000;
+  writeCachedToken(token, tokenUntil);
   return token;
 }
 
@@ -93,6 +133,12 @@ function unwrap(res) {
   if (Array.isArray(res?.data?.result)) return res.data.result;
   if (Array.isArray(res?.data)) return res.data;
   if (Array.isArray(res?.result)) return res.result;
+  // v3 list endpoints also key the array on the entity name: {tasks:[…]},
+  // {issues:[…]}, {milestones:[…]}. Missing these returns an empty array from a
+  // perfectly good 200, which reads as "no data" rather than as a parsing bug.
+  for (const k of ['tasks', 'issues', 'milestones', 'projects', 'tasklists']) {
+    if (Array.isArray(res?.[k])) return res[k];
+  }
   return [];
 }
 
@@ -225,6 +271,107 @@ async function records(moduleApi, loanReference) {
   return loanReference ? mapped.filter((r) => r['Loan Reference'] === loanReference) : mapped;
 }
 
+
+/* ── Task/Issue-backed child records ─────────────────────────────────────────
+ *
+ * Sanction conditions, tranches and deviations live as Tasks and Issues rather than
+ * custom-module records, because those are the only child entities a self-client token
+ * can read back (BROKE.md #8). The structured detail rides in the description as
+ * `Key: value` lines, which the Zoho UI renders legibly and this parses.
+ *
+ * Not an elegant store — but it is a READABLE one, and a field the app cannot display
+ * is worth less than a slightly awkward one it can. */
+
+function parseKV(description) {
+  const out = {};
+  for (const line of String(description || '').split('\n')) {
+    const m = line.match(/^\s*([A-Za-z][A-Za-z ]*?)\s*:\s*(.+?)\s*$/);
+    if (m) out[m[1].trim().toLowerCase()] = m[2].trim();
+  }
+  return out;
+}
+
+const CONDITION_RE = /^\[(Pre-Disbursement|Post-Disbursement|Continuing Covenant)\]\s*(.*)$/;
+const TRANCHE_RE = /^\[Tranche (\d+)\]\s*(\w+)\s*—\s*Rs\s*([\d.]+)\s*Cr/;
+const SEVERITY_RE = /^\[(Critical|Major|Minor)\]\s*(.*)$/;
+
+/** Split a project's tasks into conditions and tranches. */
+function splitTasks(tasks) {
+  const conditions = [];
+  const tranches = [];
+
+  for (const t of tasks) {
+    const name = t.name || '';
+    const kv = parseKV(t.description);
+
+    const cm = name.match(CONDITION_RE);
+    if (cm) {
+      conditions.push({
+        id: String(t.id),
+        conditionText: cm[2],
+        category: cm[1],
+        conditionType: kv.type || null,
+        frequency: kv.frequency || null,
+        dueDate: t.end_date || null,
+        complianceStatus: kv.status || 'Open',
+        waiverAuthority: kv['waiver authority'] || null,
+        blocksDisbursement: /^yes$/i.test(kv['blocks disbursement'] || ''),
+      });
+      continue;
+    }
+
+    const tm = name.match(TRANCHE_RE);
+    if (tm) {
+      tranches.push({
+        id: String(t.id),
+        trancheNo: Number(tm[1]),
+        trancheStatus: tm[2],
+        amountCr: Number(tm[3]),
+        scheduledDate: kv.scheduled || t.end_date || null,
+        actualDate: kv.actual && kv.actual !== 'not released' ? kv.actual : null,
+        mode: kv.mode || null,
+        purpose: kv.purpose || null,
+        blockedReason: kv.blocked || null,
+      });
+    }
+  }
+
+  conditions.sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
+  tranches.sort((a, b) => a.trancheNo - b.trancheNo);
+  return { conditions, tranches };
+}
+
+function mapIssues(issues, project) {
+  return issues.map((i) => {
+    const m = (i.name || '').match(SEVERITY_RE);
+    return {
+      id: String(i.id),
+      severity: m ? m[1] : 'Minor',
+      title: m ? m[2] : i.name,
+      description: i.description || '',
+      loanReference: project?.loanReference || project?.loan_reference || '',
+      borrowerName: project?.borrowerName || project?.borrower_name || '',
+      exposureCr: project?.totalRequestedCr ?? null,
+      createdOn: i.created_time || null,
+    };
+  });
+}
+
+const tasksOf = (projectId) =>
+  zoho('GET', `/portal/${PORTAL}/projects/${projectId}/tasks?page=1&per_page=200`)
+    .then(unwrap)
+    .catch(() => []);
+
+const issuesOf = (projectId) =>
+  zoho('GET', `/portal/${PORTAL}/projects/${projectId}/issues?page=1&per_page=100`)
+    .then(unwrap)
+    .catch(() => []);
+
+const phasesOf = (projectId) =>
+  zoho('GET', `/portal/${PORTAL}/projects/${projectId}/phases?page=1&per_page=100`)
+    .then(unwrap)
+    .catch(() => []);
+
 /* ── Projects (loan files) ──────────────────────────────────────────────────── */
 
 const num = (v) => (v == null || v === '' ? null : Number(v));
@@ -271,6 +418,7 @@ async function loanProjects() {
       daysInStage,
       daysOver: slaDays && daysInStage ? Math.max(daysInStage - slaDays, 0) : 0,
       owner: p.owner?.full_name || p.owner_name || null,
+      openIssues: (p.issues?.open_count ?? 0) + (p.issues?.closed_count ?? 0),
     };
     });
 }
@@ -284,19 +432,31 @@ async function loanFile(ref) {
   const loan = loans.find((l) => l.loanReference === ref);
   if (!loan) return null;
 
-  const [facilities, collateral, risk, conditions, tranches, phases] = await Promise.all([
-    records('facility', ref),
-    records('collateral', ref),
-    records('risk_assessment', ref),
-    records('sanction_condition', ref),
-    records('disbursement_tranche', ref),
-    zoho('GET', `/portal/${PORTAL}/projects/${loan.projectId}/phases?page=1&per_page=50`).catch(
-      () => ({ data: { result: [] } }),
-    ),
+  const [tasks, issues, phases, facilities, collateral, risk] = await Promise.all([
+    tasksOf(loan.projectId),
+    issuesOf(loan.projectId),
+    phasesOf(loan.projectId),
+    // Custom modules are unreadable with a self-client token; degrade rather than fail.
+    records('facility', ref).catch(() => []),
+    records('collateral', ref).catch(() => []),
+    records('risk_assessment', ref).catch(() => []),
   ]);
 
+  const { conditions, tranches } = splitTasks(tasks);
+
+  // Stage TAT from the phase spans — this is what makes the rail honest rather than
+  // decorative, and it comes straight out of Zoho.
+  const stageTat = {};
+  for (const ph of phases) {
+    if (!ph.start_date || !ph.end_date) continue;
+    const d = Math.round(
+      (new Date(ph.end_date) - new Date(ph.start_date)) / 86400000,
+    );
+    if (Number.isFinite(d) && d >= 0) stageTat[ph.name] = d;
+  }
+
   return {
-    loan: { ...loan, stageTat: {} },
+    loan: { ...loan, stageTat },
     facilities,
     collateral,
     risk: risk.map((r) => ({
@@ -310,24 +470,15 @@ async function loanFile(ref) {
       recommendation: r['Recommendation'],
       keyRisks: r['Key Risks'],
     })),
-    conditions: conditions.map((c) => ({
-      id: c.id,
-      conditionText: c['Condition Text'] || c.name,
-      category: c['Category'],
-      conditionType: c['Condition Type'],
-      dueDate: c['Due Date'],
-      complianceStatus: c['Compliance Status'] || 'Open',
-      blocksDisbursement: Boolean(c['Blocks Disbursement']),
+    conditions,
+    tranches,
+    deviations: mapIssues(issues, loan),
+    phases: phases.map((ph) => ({
+      id: String(ph.id),
+      name: ph.name,
+      startDate: ph.start_date || null,
+      endDate: ph.end_date || null,
     })),
-    tranches: tranches.map((t) => ({
-      id: t.id,
-      trancheNo: num(t['Tranche No']),
-      amountCr: num(t['Amount Cr']),
-      scheduledDate: t['Scheduled Date'],
-      trancheStatus: t['Tranche Status'] || 'Scheduled',
-      blockedReason: t['Blocked Reason'] || null,
-    })),
-    phases: phases.data?.result || [],
     audit: [],
   };
 }
@@ -400,11 +551,38 @@ async function attention() {
     }
   };
 
-  const [conditions, tranches, devs] = await Promise.all([
-    soft('covenants', () => records('sanction_condition')),
-    soft('tranches', () => records('disbursement_tranche')),
-    soft('deviations', () => deviations().then((d) => d.deviations)),
-  ]);
+  // Children come from Tasks and Issues, which the token can read — so this feed is
+  // complete rather than partial.
+  const perLoan = await Promise.all(
+    loans.map(async (l) => {
+      const { conditions, tranches } = splitTasks(await tasksOf(l.projectId));
+      return { l, conditions, tranches };
+    }),
+  );
+
+  const conditions = perLoan.flatMap(({ l, conditions: cs }) =>
+    cs.map((c) => ({
+      'Loan Reference': l.loanReference,
+      'Condition Text': c.conditionText,
+      'Condition Type': c.conditionType,
+      'Due Date': c.dueDate,
+      'Compliance Status': c.complianceStatus,
+      'Blocks Disbursement': c.blocksDisbursement,
+    })),
+  );
+
+  const tranches = perLoan.flatMap(({ l, tranches: ts }) =>
+    ts.map((t) => ({
+      'Loan Reference': l.loanReference,
+      'Tranche No': t.trancheNo,
+      'Amount Cr': t.amountCr,
+      'Scheduled Date': t.scheduledDate,
+      'Tranche Status': t.trancheStatus,
+      'Blocked Reason': t.blockedReason,
+    })),
+  );
+
+  const devs = await soft('deviations', () => deviations().then((d) => d.deviations));
 
   return { ...rankAttention({ loans, conditions, tranches, deviations: devs }), unavailable };
 }
@@ -427,20 +605,65 @@ async function concentration() {
 }
 
 async function deviations() {
-  const res = await zoho('GET', `/portal/${PORTAL}/issues?page=1&per_page=100`).catch(() => null);
-  const list = unwrap(res);
-  return {
-    deviations: list.map((i) => ({
-      id: String(i.id),
-      title: i.title || i.name,
-      description: i.description || '',
-      severity: i.severity?.type || i.severity || 'Minor',
-      loanReference: i.project?.name || '',
-      borrowerName: i.project?.name || '',
-      exposureCr: null,
-      createdOn: i.created_time,
-    })),
-  };
+  const loans = await loanProjects();
+  // Only files that actually carry issues, so this is a handful of calls not fifteen
+  // wasted ones. The project list already tells us the issue count.
+  const withIssues = loans.filter((l) => l.openIssues > 0 || l.openIssues === undefined);
+
+  const all = await Promise.all(
+    withIssues.map(async (l) => mapIssues(await issuesOf(l.projectId), l)),
+  );
+  const flat = all.flat();
+  flat.sort((a, b) => String(b.createdOn).localeCompare(String(a.createdOn)));
+  return { deviations: flat };
+}
+
+/* ── Portfolio-wide child collections ────────────────────────────────────────
+ *
+ * Sanction Conditions and Disbursement Tranches are browsable across the whole book
+ * because they are Task-backed and therefore readable. Facilities, Collateral and Risk
+ * Assessments remain custom-module records and stay unreadable — the module screen says
+ * so explicitly rather than showing an empty table. */
+
+async function allConditions() {
+  const loans = await loanProjects();
+  const out = await Promise.all(
+    loans.map(async (l) => {
+      const { conditions } = splitTasks(await tasksOf(l.projectId));
+      return conditions.map((c) => ({
+        id: c.id,
+        'Loan Reference': l.loanReference,
+        'Condition Text': c.conditionText,
+        Category: c.category,
+        'Condition Type': c.conditionType,
+        'Due Date': c.dueDate,
+        'Compliance Status': c.complianceStatus,
+        'Blocks Disbursement': c.blocksDisbursement,
+      }));
+    }),
+  );
+  return out.flat();
+}
+
+async function allTranches() {
+  const loans = await loanProjects();
+  const out = await Promise.all(
+    loans.map(async (l) => {
+      const { tranches } = splitTasks(await tasksOf(l.projectId));
+      return tranches.map((t) => ({
+        id: t.id,
+        'Loan Reference': l.loanReference,
+        'Tranche No': t.trancheNo,
+        'Amount Cr': t.amountCr,
+        'Scheduled Date': t.scheduledDate,
+        'Actual Disbursement Date': t.actualDate,
+        'Payment Mode': t.mode,
+        'Tranche Status': t.trancheStatus,
+        'Blocked Reason': t.blockedReason,
+      }));
+    }),
+  );
+  return out.flat();
 }
 
 /* ── Writes ─────────────────────────────────────────────────────────────────── */
@@ -475,6 +698,8 @@ async function releaseTranche(id, session) {
 }
 
 module.exports = {
+  allConditions,
+  allTranches,
   pipeline,
   loanFile,
   dashboard,

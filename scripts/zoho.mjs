@@ -126,6 +126,10 @@ export function unwrap(res) {
   if (Array.isArray(res?.data?.result)) return res.data.result;
   if (Array.isArray(res?.data)) return res.data;
   if (Array.isArray(res?.result)) return res.result;
+  // v3 list endpoints also key the array on the entity name.
+  for (const k of ['tasks', 'issues', 'milestones', 'projects', 'tasklists']) {
+    if (Array.isArray(res?.[k])) return res[k];
+  }
   return [];
 }
 

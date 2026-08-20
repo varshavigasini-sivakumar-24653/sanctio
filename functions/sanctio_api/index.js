@@ -117,6 +117,17 @@ app.get('/api/modules/:module', requireSession, async (req, res, next) => {
     return res.status(404).json({ error: `Unknown module "${module}"` });
   }
   try {
+    // These two are Task-backed, so they are readable where custom-module records
+    // are not. Routing them here rather than through records() is what makes the
+    // difference between a working screen and an explanatory error.
+    if (module === 'sanction_condition') {
+      const rows = await projects.allConditions();
+      return res.json({ module, count: rows.length, rows });
+    }
+    if (module === 'disbursement_tranche') {
+      const rows = await projects.allTranches();
+      return res.json({ module, count: rows.length, rows });
+    }
     const rows = await projects.records(module, req.query.ref || undefined);
     res.json({ module, count: rows.length, rows });
   } catch (e) {

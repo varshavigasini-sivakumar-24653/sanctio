@@ -10,6 +10,11 @@ const app = require('./index');
 
 const PORT = process.env.PORT || 3001;
 
+// Cache the Zoho access token across restarts. Without this, every edit-and-restart
+// burns a token refresh and Zoho rate-limits the refresh endpoint for a while.
+process.env.SANCTIO_TOKEN_CACHE =
+  process.env.SANCTIO_TOKEN_CACHE || require('node:path').join(require('node:os').tmpdir(), 'sanctio-token.json');
+
 // Generated per-boot when unset, so local dev never depends on a committed secret
 // and never silently shares one with the deployed environment. Restarting the
 // server invalidates existing sessions, which is correct for dev.

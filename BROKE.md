@@ -206,3 +206,50 @@ MCP server, so schema and records can be *created* through the MCP but a deploye
 cannot *read* them back over REST. Plan the data model around what a self-client token
 can actually reach — Projects, Tasks, Milestones, Issues, Timelogs — or verify custom
 module record access on day one, before designing six modules around it.
+
+---
+
+## 9. Four Projects v3 write quirks, each a bare 400
+
+Found while moving child data onto Tasks and Issues. None of these messages names the
+real problem.
+
+**Phases want `MM-DD-YYYY`. Tasks want `YYYY-MM-DD`.** Same API, same request shape.
+Passing ISO to a phase returns `400 INVALID_PARAMETER_VALUE` with no indication that the
+date format is at fault — we assumed a missing required field first.
+
+**Task `priority` rejects the values the UI shows.** `"High"` and `"Medium"` both return
+`400 Input Parameter Does not Match the Pattern Specified`. Omitting `priority` succeeds.
+We never found the accepted form and dropped the field.
+
+**Issues key on `name`, not `title`.** Sending `title` returns
+`400 Input Parameter Missing: name` — which reads as "you forgot a field" rather than
+"the field you sent is not a thing". Tasks and Issues both use `name`; nothing uses `title`.
+
+**Tasklist creation needs a scope that does not exist in our grant.**
+`POST /projects/{id}/tasklists` returns `401 INVALID_OAUTHSCOPE` even with
+`ZohoProjects.tasks.ALL`. Tasks can be created *without* a tasklist — Zoho files them
+under an auto-created "General" list — so this is avoidable, but it means you cannot
+organise tasks into named lists via API with a tasks-only grant.
+
+**Method for isolating any of these:** post the minimal body (`{name}` only), confirm
+201, then add one field per request. Four requests found all four faults; guessing at
+the body shape found none of them.
+
+---
+
+## 10. Zoho rate-limits token REFRESHES, not API calls
+
+`"You have made too many requests continuously. Please try again after some time."` from
+`accounts.zoho.in/oauth/v2/token` — and then every request fails for several minutes.
+
+The cause was not traffic. It was a local dev server that refreshes on boot, restarted
+perhaps thirty times across an afternoon of edits, plus each script run refreshing again.
+Access tokens last an hour; we were throwing away a perfectly good one every restart.
+
+Fix: cache the access token to disk in local dev, keyed to its expiry, so a restart
+reuses it. In-memory caching is sufficient on Catalyst because the function stays warm —
+the disk cache is enabled only when a cache path is set, so the deployed function never
+touches a filesystem it does not own.
+
+Recovery is simply waiting: it cleared in a little under two minutes.
