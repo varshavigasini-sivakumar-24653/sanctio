@@ -5,16 +5,9 @@
     "org_id": 60083985672
   },
   "functions": {
-    "targets": [
-      {
-        "name": "sanctio_api",
-        "source": "functions/sanctio_api",
-        "stack": "node18",
-        "type": "advancedio",
-        "memory": 256,
-        "timeout": 30
-      }
-    ]
+    "targets": ["sanctio_api"],
+    "ignore": [],
+    "source": "functions"
   },
   "client": {
     "targets": [
@@ -23,5 +16,11 @@
         "source": "client/dist"
       }
     ]
-  }
+  },
+  "slate": [
+    {
+      "name": "sanctio-loanapp",
+      "source": "client"
+    }
+  ]
 }

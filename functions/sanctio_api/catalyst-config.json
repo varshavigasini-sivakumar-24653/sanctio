@@ -1,0 +1,13 @@
+{
+	"deployment": {
+		"name": "sanctio_api",
+		"stack": "node18",
+		"type": "advancedio",
+		"memory": 256,
+		"timeout": 30,
+		"env_variables": {}
+	},
+	"execution": {
+		"main": "index.js"
+	}
+}
