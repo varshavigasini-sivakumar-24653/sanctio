@@ -101,6 +101,29 @@ app.get('/api/concentration', requireSession, async (_req, res, next) => {
   }
 });
 
+// Whitelisted so the module segment can never be used to reach an arbitrary path.
+const BROWSABLE_MODULES = new Set([
+  'borrower',
+  'facility',
+  'collateral',
+  'risk_assessment',
+  'sanction_condition',
+  'disbursement_tranche',
+]);
+
+app.get('/api/modules/:module', requireSession, async (req, res, next) => {
+  const { module } = req.params;
+  if (!BROWSABLE_MODULES.has(module)) {
+    return res.status(404).json({ error: `Unknown module "${module}"` });
+  }
+  try {
+    const rows = await projects.records(module, req.query.ref || undefined);
+    res.json({ module, count: rows.length, rows });
+  } catch (e) {
+    next(e);
+  }
+});
+
 app.get('/api/borrowers', requireSession, async (_req, res, next) => {
   try {
     res.json(await projects.records('borrower'));

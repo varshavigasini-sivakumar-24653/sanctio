@@ -1,18 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { Avatar, Skeleton, ThemeToggle, Wordmark } from './components/ui';
+import Sidebar from './components/Sidebar';
 import { useAuth } from './lib/providers';
 import Login from './screens/Login';
 import Pipeline from './screens/Pipeline';
 import LoanFile from './screens/LoanFile';
 import CreditDesk from './screens/CreditDesk';
 import DealDesk from './screens/DealDesk';
-
-const NAV = [
-  { to: '/pipeline', label: 'Pipeline' },
-  { to: '/credit-desk', label: 'Credit Desk' },
-  { to: '/deal-desk', label: 'Deal Desk' },
-];
+import ModuleList from './screens/ModuleList';
 
 function UserMenu() {
   const { user, signOut } = useAuth();
@@ -136,22 +132,7 @@ function Shell({ children }) {
       >
         <Wordmark />
 
-        <nav className="row gap-4 grow">
-          {NAV.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className="btn btn-ghost"
-              style={({ isActive }) =>
-                isActive
-                  ? { background: 'var(--accent-wash)', color: 'var(--text-primary)', fontWeight: 600 }
-                  : undefined
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
+        <div className="grow" />
 
         <div className="row gap-4">
           <ThemeToggle />
@@ -159,7 +140,14 @@ function Shell({ children }) {
         </div>
       </header>
 
-      <main className="grow">{children}</main>
+      <div className="row grow" style={{ alignItems: 'stretch', minHeight: 0 }}>
+        <Sidebar />
+        {/* minWidth:0 is what stops a wide table from pushing the rail off-screen —
+          * without it a flex child refuses to shrink below its content width. */}
+        <main className="grow" style={{ minWidth: 0, overflowX: 'hidden' }}>
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
@@ -203,6 +191,7 @@ export default function App() {
         <Route path="/loans/:ref" element={<LoanFile />} />
         <Route path="/credit-desk" element={<CreditDesk />} />
         <Route path="/deal-desk" element={<DealDesk />} />
+        <Route path="/modules/:module" element={<ModuleList />} />
         <Route path="*" element={<Navigate to="/pipeline" replace />} />
       </Routes>
     </Shell>

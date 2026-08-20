@@ -75,6 +75,8 @@ export const api = {
   attention: () => request('GET', '/attention'),
   concentration: () => request('GET', '/concentration'),
   borrowers: () => request('GET', '/borrowers'),
+  moduleRecords: (module, ref) =>
+    request('GET', `/modules/${encodeURIComponent(module)}${ref ? `?ref=${encodeURIComponent(ref)}` : ''}`),
   deviations: () => request('GET', '/deviations'),
 
   // Writes
