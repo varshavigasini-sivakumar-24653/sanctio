@@ -154,3 +154,55 @@ rather than "the parsing is wrong". We hit exactly this and it cost real time be
 someone noticed `/portals` had returned 200 with content.
 
 Fix: one tolerant `unwrap()` helper that accepts every shape, used on every list read.
+
+---
+
+## 8. Custom-module records: proven unreachable by a self-client token
+
+Worth recording as a settled fact rather than a suspicion, because we spent a long time
+on it and the failure mode is misleading at every step.
+
+**The test that settles it.** With 13 borrower records definitely present in the portal:
+
+| Caller | Result |
+|---|---|
+| Zoho Projects **MCP server** (`get_record_list`) | `200`, all 13 records with every custom field |
+| Our **self-client token**, every route we could think of | `400 URL_RULE_NOT_CONFIGURED` |
+
+Routes tried, all on `projects.zoho.in/api/v3` unless noted — every one identical:
+
+```
+/portal/{p}/modules/{module}/records      /portal/{p}/{module}/records
+/portal/{p}/{module}                      /portal/{p}/modules/{module}
+/portal/{p}/modules/{moduleId}/records    /portal/{p}/{moduleId}/records
+/portal/{p}/custommodule/{module}/records /portal/{p}/custommodules/{module}/records
+/portal/{p}/customentity/{module}         /portal/{p}/entities/{module}/records
+/portal/{p}/records/{module}              /portal/{p}/module/{module}/records
+/portal/{p}/projects/{pid}/{module}       /portal/{p}/projects/{pid}/{module}/records
+```
+
+Alternate hosts, also no: `www.zohoapis.in/projects/v3/...` 404s even for `/projects`
+(despite the token response advertising `api_domain: https://www.zohoapis.in`), and
+`projectsapi.zoho.in/api/v3/...` reaches the same gateway and gives the same 400.
+
+**Why it is not "the module is empty":** the identical 400 appeared before *and* after
+the records existed. An empty module would return `200` with an empty array — which is
+exactly what the MCP returns when a module genuinely has no rows.
+
+**Why we could not fix it with scopes:** the Zoho API console **rejects as invalid** every
+scope name that would plausibly cover custom entities:
+
+```
+ZohoProjects.settings.ALL       ZohoProjects.customentity.ALL
+ZohoProjects.customfields.ALL   ZohoProjects.custommodule.ALL
+ZohoProjects.layouts.ALL        ZohoProjects.entity.ALL
+```
+
+`ZohoProjects.custom_fields.ALL` (with the underscore) *is* accepted, and is the only
+custom-anything scope the console will take.
+
+**Practical consequence for anyone building this:** a Catalyst function cannot call the
+MCP server, so schema and records can be *created* through the MCP but a deployed app
+cannot *read* them back over REST. Plan the data model around what a self-client token
+can actually reach — Projects, Tasks, Milestones, Issues, Timelogs — or verify custom
+module record access on day one, before designing six modules around it.
