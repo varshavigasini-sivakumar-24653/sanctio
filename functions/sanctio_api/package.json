@@ -1,0 +1,9 @@
+{
+  "name": "sanctio-api",
+  "version": "1.0.0",
+  "description": "Sanctio BFF — auth, role enforcement, Zoho Projects proxy",
+  "main": "index.js",
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
