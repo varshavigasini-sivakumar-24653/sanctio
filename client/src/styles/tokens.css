@@ -49,8 +49,8 @@
   --shadow-pop: 0 4px 12px rgba(11, 11, 11, 0.1), 0 0 0 1px var(--border);
   --shadow-modal: 0 16px 48px rgba(11, 11, 11, 0.2);
 
-  --rail: 240px;
-  --topbar: 56px;
+  --rail: 252px;
+  --topbar: 60px;
 }
 
 /* The media query covers the OS setting; the data-theme scope covers the in-app
@@ -130,8 +130,8 @@ body,
 
 body {
   font-family: var(--font);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 14.5px;
+  line-height: 1.55;
   color: var(--text-primary);
   background: var(--page);
   -webkit-font-smoothing: antialiased;
@@ -165,21 +165,21 @@ textarea {
 /* ── Typography ─────────────────────────────────────────────────────────── */
 
 .t-page-title {
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
 }
 
 .t-section {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-secondary);
 }
 
 .t-meta {
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--text-muted);
 }
 
@@ -195,12 +195,12 @@ textarea {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 32px;
-  padding: 0 12px;
+  height: 34px;
+  padding: 0 13px;
   border: 1px solid transparent;
   border-radius: var(--r-md);
   background: transparent;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
@@ -243,8 +243,9 @@ textarea {
 }
 
 .btn-lg {
-  height: 38px;
-  padding: 0 16px;
+  height: 42px;
+  padding: 0 18px;
+  font-size: 15px;
 }
 
 .btn-block {
@@ -260,14 +261,14 @@ textarea {
 }
 
 .field-label {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary);
 }
 
 .input {
-  height: 36px;
-  padding: 0 10px;
+  height: 40px;
+  padding: 0 12px;
   background: var(--surface-1);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-md);
@@ -294,7 +295,7 @@ textarea {
 }
 
 .field-error {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--critical);
   display: flex;
   align-items: center;
@@ -320,12 +321,12 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 22px;
-  padding: 0 8px 0 7px;
-  border-radius: 11px;
+  height: 24px;
+  padding: 0 9px 0 8px;
+  border-radius: 12px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 500;
   white-space: nowrap;
 }

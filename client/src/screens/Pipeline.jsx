@@ -38,7 +38,7 @@ function LoanCard({ loan }) {
         <Pill tone={tone}>{SLA_LABEL[tone]}</Pill>
       </div>
 
-      <div style={{ fontWeight: 600, fontSize: 13, lineHeight: 1.3 }}>{loan.borrowerName}</div>
+      <div style={{ fontWeight: 600, fontSize: 14.5, lineHeight: 1.35 }}>{loan.borrowerName}</div>
 
       <div className="row gap-8">
         <Money cr={loan.totalRequestedCr} bold />
@@ -56,9 +56,9 @@ function LoanCard({ loan }) {
 function Column({ stage, loans }) {
   const total = loans.reduce((s, l) => s + (l.totalRequestedCr || 0), 0);
   return (
-    <div className="stack gap-8" style={{ minWidth: 248, width: 248, flex: 'none' }}>
+    <div className="stack gap-8" style={{ minWidth: 276, width: 276, flex: 'none' }}>
       <div className="row gap-8" style={{ paddingBottom: 6, borderBottom: '1px solid var(--border)' }}>
-        <span className="t-section grow" style={{ fontSize: 11 }}>
+        <span className="t-section grow">
           {SHORT[stage] || stage}
         </span>
         <span className="t-meta num">{loans.length}</span>
@@ -110,7 +110,7 @@ export default function Pipeline() {
       {loading && (
         <div className="row gap-16 scroll-x" style={{ alignItems: 'flex-start' }}>
           {STAGES.slice(0, 5).map((s) => (
-            <div key={s} className="stack gap-8" style={{ width: 248, flex: 'none' }}>
+            <div key={s} className="stack gap-8" style={{ width: 276, flex: 'none' }}>
               <Skeleton height={14} width={120} />
               <Skeleton height={92} radius={10} />
               <Skeleton height={92} radius={10} />

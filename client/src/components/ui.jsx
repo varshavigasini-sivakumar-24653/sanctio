@@ -14,12 +14,86 @@ export function Mark({ size = 22 }) {
   );
 }
 
-export function Wordmark({ size = 22 }) {
+export function Wordmark({ size = 24 }) {
   return (
-    <span className="row gap-8" style={{ fontWeight: 600, fontSize: 15, letterSpacing: '-0.01em' }}>
+    <span className="row gap-8" style={{ fontWeight: 600, fontSize: 16.5, letterSpacing: '-0.015em' }}>
       <Mark size={size} />
       Sanctio
     </span>
+  );
+}
+
+/* One stroke icon per module. Distinct silhouettes, not six variations of a table —
+ * in a sidebar the shape is what the eye picks up before the label, so if they all look
+ * the same the icons are decoration rather than navigation. */
+const ICONS = {
+  // Borrowers — a company building
+  building: (
+    <>
+      <path d="M4 20V6.5a1.5 1.5 0 0 1 1.5-1.5h6A1.5 1.5 0 0 1 13 6.5V20" />
+      <path d="M13 20V11h5.5A1.5 1.5 0 0 1 20 12.5V20" />
+      <path d="M2.5 20h19" strokeLinecap="round" />
+      <path d="M7 9h2M7 13h2M16 15h1.5" strokeLinecap="round" />
+    </>
+  ),
+  // Facilities — stacked limits inside one sanction
+  layers: (
+    <>
+      <path d="M12 3.5 20.5 8 12 12.5 3.5 8 12 3.5z" />
+      <path d="M3.5 12.5 12 17l8.5-4.5" />
+      <path d="M3.5 16.5 12 21l8.5-4.5" />
+    </>
+  ),
+  // Collateral — security held
+  shield: (
+    <>
+      <path d="M12 3.5 19 6v5.5c0 4-2.9 7.4-7 9-4.1-1.6-7-5-7-9V6l7-2.5z" />
+      <path d="M9.2 12.2l2 2 3.6-3.8" strokeLinecap="round" />
+    </>
+  ),
+  // Risk — a scored gauge
+  gauge: (
+    <>
+      <path d="M4 16a8 8 0 1 1 16 0" />
+      <path d="M12 16l4.2-4.4" strokeLinecap="round" />
+      <circle cx="12" cy="16" r="1.4" />
+      <path d="M3.6 19.5h16.8" strokeLinecap="round" />
+    </>
+  ),
+  // Conditions — a covenant checklist
+  clipboard: (
+    <>
+      <path d="M9 4.5H7.5A1.5 1.5 0 0 0 6 6v13.5A1.5 1.5 0 0 0 7.5 21h9a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H15" />
+      <rect x="9" y="3" width="6" height="3.2" rx="1" />
+      <path d="M9.2 11.5l1.4 1.4 2.6-2.8M9.2 16.2l1.4 1.4 2.6-2.8" strokeLinecap="round" />
+    </>
+  ),
+  // Tranches — money moving out
+  banknote: (
+    <>
+      <rect x="2.5" y="6.5" width="19" height="11" rx="2" />
+      <circle cx="12" cy="12" r="2.4" />
+      <path d="M6 10v4M18 10v4" strokeLinecap="round" />
+    </>
+  ),
+};
+
+export function ModuleIcon({ name, size = 17 }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+      style={{ flex: 'none' }}
+    >
+      {ICONS[name] || ICONS.layers}
+    </svg>
   );
 }
 
@@ -34,7 +108,7 @@ export function StatTile({ label, value, sub, tone }) {
       <div className="t-meta" style={{ marginBottom: 6 }}>
         {label}
       </div>
-      <div className="num" style={{ fontSize: 28, fontWeight: 600, letterSpacing: '-0.02em' }}>
+      <div className="num" style={{ fontSize: 32, fontWeight: 600, letterSpacing: '-0.02em' }}>
         {value}
       </div>
       {sub != null && (
@@ -55,7 +129,7 @@ export function Money({ cr, bold }) {
   );
 }
 
-export function Avatar({ name, size = 24 }) {
+export function Avatar({ name, size = 26 }) {
   return (
     <span
       title={name}
@@ -66,7 +140,7 @@ export function Avatar({ name, size = 24 }) {
         borderRadius: '50%',
         background: 'var(--surface-3)',
         color: 'var(--text-secondary)',
-        fontSize: size <= 24 ? 10 : 12,
+        fontSize: size <= 24 ? 11 : 13,
         fontWeight: 600,
         flex: 'none',
       }}

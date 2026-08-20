@@ -115,7 +115,32 @@ export default function ModuleList() {
         </div>
       )}
 
-      {error && <ErrorState message={error.message} onRetry={reload} />}
+      {error &&
+        (error.payload?.code === 'MODULE_UNREADABLE' ? (
+          /* Distinct from a generic failure on purpose. "Failed to load" invites the
+           * reader to retry forever; this says what is actually true and what would
+           * change it. */
+          <div className="card stack gap-12" style={{ padding: 24, maxWidth: 620 }}>
+            <div className="row gap-12">
+              <Pill tone="warning">Not readable</Pill>
+              <span style={{ fontWeight: 600 }}>{mod.label} records are not accessible</span>
+            </div>
+            <p className="t-meta" style={{ lineHeight: 1.6 }}>
+              {error.payload.hint}
+            </p>
+            <p className="t-meta" style={{ lineHeight: 1.6 }}>
+              Loan files, stages and the portfolio views read from the Projects module,
+              which <em>is</em> accessible — so the Pipeline and Deal Desk are unaffected.
+            </p>
+            <div className="row gap-8">
+              <button type="button" className="btn btn-secondary" onClick={reload}>
+                Try again
+              </button>
+            </div>
+          </div>
+        ) : (
+          <ErrorState message={error.message} onRetry={reload} />
+        ))}
 
       {data && data.rows.length === 0 && (
         <EmptyState
@@ -138,7 +163,7 @@ export default function ModuleList() {
                         top: 0,
                         background: 'var(--surface-2)',
                         textAlign: 'left',
-                        padding: '8px 12px',
+                        padding: '9px 12px',
                         borderBottom: '1px solid var(--border)',
                         width: col.width,
                         whiteSpace: 'nowrap',
@@ -149,7 +174,7 @@ export default function ModuleList() {
                         type="button"
                         className="btn btn-ghost"
                         onClick={() => toggleSort(col.key)}
-                        style={{ height: 20, padding: 0, fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em' }}
+                        style={{ height: 22, padding: 0, fontSize: 11.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}
                         aria-label={`Sort by ${col.label}`}
                       >
                         {col.label}
@@ -171,8 +196,8 @@ export default function ModuleList() {
                       <td
                         key={col.key}
                         style={{
-                          padding: '8px 12px',
-                          fontSize: 13,
+                          padding: '10px 12px',
+                          fontSize: 14,
                           maxWidth: col.width,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',

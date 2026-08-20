@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { MODULES } from '../lib/modules';
+import { ModuleIcon } from './ui';
 
 /* Left rail. Two groups, deliberately separated:
  *
@@ -115,10 +116,7 @@ export default function Sidebar() {
             style={linkStyle}
             title={m.blurb}
           >
-            <Icon>
-              <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
-              <path d="M3.5 9.5h17M9 9.5v10" />
-            </Icon>
+            <ModuleIcon name={m.icon} />
             <span
               className="grow"
               style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}

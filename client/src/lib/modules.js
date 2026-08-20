@@ -7,6 +7,7 @@
 export const MODULES = [
   {
     api: 'borrower',
+    icon: 'building',
     label: 'Borrowers',
     singular: 'Borrower',
     blurb: 'Corporate entities, co-borrowers and guarantors',
@@ -24,6 +25,7 @@ export const MODULES = [
   },
   {
     api: 'facility',
+    icon: 'layers',
     label: 'Facilities',
     singular: 'Facility',
     blurb: 'Individual credit limits inside each sanction',
@@ -41,6 +43,7 @@ export const MODULES = [
   },
   {
     api: 'collateral',
+    icon: 'shield',
     label: 'Collateral & Valuations',
     singular: 'Collateral',
     blurb: 'Security offered, its valuation and legal clearance',
@@ -58,6 +61,7 @@ export const MODULES = [
   },
   {
     api: 'risk_assessment',
+    icon: 'gauge',
     label: 'Risk Assessments',
     singular: 'Risk Assessment',
     blurb: 'Scored credit appraisals, one per round',
@@ -75,6 +79,7 @@ export const MODULES = [
   },
   {
     api: 'sanction_condition',
+    icon: 'clipboard',
     label: 'Sanction Conditions',
     singular: 'Sanction Condition',
     blurb: 'Pre-disbursement conditions and continuing covenants',
@@ -91,6 +96,7 @@ export const MODULES = [
   },
   {
     api: 'disbursement_tranche',
+    icon: 'banknote',
     label: 'Disbursement Tranches',
     singular: 'Disbursement Tranche',
     blurb: 'Scheduled and actual money movement',

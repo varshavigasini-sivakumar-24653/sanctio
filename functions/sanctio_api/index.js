@@ -120,6 +120,26 @@ app.get('/api/modules/:module', requireSession, async (req, res, next) => {
     const rows = await projects.records(module, req.query.ref || undefined);
     res.json({ module, count: rows.length, rows });
   } catch (e) {
+    // Zoho hides routes a token is not scoped for and reports them as a bad URL
+    // (BROKE.md #5). Surfacing that as a generic 500 sends the reader looking for a
+    // bug in the app, when the truth is specific and actionable: this module's
+    // records are not readable with the current credentials.
+    const scopeBlocked =
+      e.status === 401 ||
+      /URL_RULE_NOT_CONFIGURED|INVALID_OAUTHSCOPE|Could not resolve the records endpoint/i.test(
+        e.message || '',
+      );
+    if (scopeBlocked) {
+      return res.status(503).json({
+        error: 'This module is not readable with the current Zoho credentials',
+        hint:
+          'Custom-module records need a scope the current token lacks. The schema and ' +
+          'records were created through the Zoho Projects MCP, which holds that access. ' +
+          'See BROKE.md #5.',
+        code: 'MODULE_UNREADABLE',
+        module,
+      });
+    }
     next(e);
   }
 });
