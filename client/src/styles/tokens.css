@@ -1,39 +1,53 @@
 /* Sanctio design tokens — see docs/DESIGN.md.
  *
- * Dark mode is SELECTED, not inverted: the series hues are re-stepped for the dark
- * surface rather than algorithmically lightened, and validated against it. Status
- * colours are mode-invariant by design.
+ * Palette: indigo + coral on warm paper. Chosen over the more usual blue/orange
+ * because a credit desk built in default blue looks like every other dashboard; the
+ * indigo reads considered rather than stock, and the warm off-white keeps it from
+ * feeling cold.
  *
- * The chart series colours below passed all six checks of the palette validator in
- * both modes (light CVD ΔE 24.7 / normal 33.6; dark 26.8 / 31.8; both ≥3:1 on their
- * surface). Do not hand-tune them. */
+ * Dark mode is SELECTED, not inverted: the series hues are re-stepped for the dark
+ * surface, not algorithmically lightened, and validated against it. Status colours
+ * are mode-invariant by design.
+ *
+ * Both series pairs pass all six checks of the palette validator against these exact
+ * surfaces:
+ *   light #4f46e5 / #e0533d on #fdfcf9 — CVD ΔE 28.5, normal 36.5, contrast ≥3:1
+ *   dark  #7d74e4 / #dd6a50 on #181c1b — CVD ΔE 23.1, normal 26.0, contrast ≥3:1
+ * Accent contrast: 6.13:1 light, 4.50:1 dark; white on accent 6.29:1.
+ * Do not hand-tune these — re-run scripts/validate_palette.js if they must change.
+ *
+ * KNOWN TENSION: series-2 coral sits in the same hue family as status-critical and
+ * status-serious. The status palette owns red/amber/green, so any warm second series
+ * neighbours it. Mitigation is the documented one — status is never colour-alone (the
+ * pill carries a dot AND a label), and the single two-series chart carries a legend.
+ * Never let hue alone distinguish a coral series mark from a critical status mark. */
 
 :root {
   color-scheme: light;
 
-  --page: #f9f9f7;
-  --surface-1: #fcfcfb;
-  --surface-2: #f2f2ee;
-  --surface-3: #e8e8e2;
-  --overlay: rgba(11, 11, 11, 0.32);
+  --page: #f4f3ef;
+  --surface-1: #fdfcf9;
+  --surface-2: #eeece6;
+  --surface-3: #e3e0d8;
+  --overlay: rgba(18, 19, 26, 0.34);
 
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #898781;
-  --text-inverse: #fcfcfb;
+  --text-primary: #12131a;
+  --text-secondary: #4a4b57;
+  --text-muted: #82828f;
+  --text-inverse: #fdfcf9;
 
-  --border: rgba(11, 11, 11, 0.1);
-  --border-strong: rgba(11, 11, 11, 0.18);
-  --gridline: #e1e0d9;
-  --axis: #c3c2b7;
+  --border: rgba(18, 19, 26, 0.1);
+  --border-strong: rgba(18, 19, 26, 0.18);
+  --gridline: #e2e0d8;
+  --axis: #c4c2b8;
 
-  --accent: #2a78d6;
-  --accent-hover: #256abf;
-  --accent-wash: #cde2fb;
-  --focus-ring: #2a78d6;
+  --accent: #4f46e5;
+  --accent-hover: #443bd0;
+  --accent-wash: #e5e2fc;
+  --focus-ring: #4f46e5;
 
-  --series-1: #2a78d6;
-  --series-2: #eb6834;
+  --series-1: #4f46e5;
+  --series-2: #e0533d;
 
   --good: #0ca30c;
   --warning: #fab219;
@@ -59,25 +73,25 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --page: #0d0d0d;
-    --surface-1: #1a1a19;
-    --surface-2: #222221;
-    --surface-3: #2c2c2a;
-    --overlay: rgba(0, 0, 0, 0.6);
-    --text-primary: #ffffff;
-    --text-secondary: #c3c2b7;
-    --text-muted: #898781;
-    --text-inverse: #0b0b0b;
-    --border: rgba(255, 255, 255, 0.1);
-    --border-strong: rgba(255, 255, 255, 0.2);
-    --gridline: #2c2c2a;
-    --axis: #383835;
-    --accent: #3987e5;
-    --accent-hover: #5598e7;
-    --accent-wash: #184f95;
-    --focus-ring: #5598e7;
-    --series-1: #3987e5;
-    --series-2: #d95926;
+    --page: #0f1112;
+    --surface-1: #181c1b;
+    --surface-2: #212524;
+    --surface-3: #2b2f2e;
+    --overlay: rgba(0, 0, 0, 0.62);
+    --text-primary: #f7f7fa;
+    --text-secondary: #b9bac4;
+    --text-muted: #85868f;
+    --text-inverse: #12131a;
+    --border: rgba(247, 247, 250, 0.11);
+    --border-strong: rgba(247, 247, 250, 0.2);
+    --gridline: #2b2f2e;
+    --axis: #3a3e3d;
+    --accent: #7d74e4;
+    --accent-hover: #948cec;
+    --accent-wash: #2f2a66;
+    --focus-ring: #948cec;
+    --series-1: #7d74e4;
+    --series-2: #dd6a50;
     --good-text: #0ca30c;
     --shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--border);
     --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.6);
@@ -86,25 +100,25 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --page: #0d0d0d;
-  --surface-1: #1a1a19;
-  --surface-2: #222221;
-  --surface-3: #2c2c2a;
-  --overlay: rgba(0, 0, 0, 0.6);
-  --text-primary: #ffffff;
-  --text-secondary: #c3c2b7;
-  --text-muted: #898781;
-  --text-inverse: #0b0b0b;
-  --border: rgba(255, 255, 255, 0.1);
-  --border-strong: rgba(255, 255, 255, 0.2);
-  --gridline: #2c2c2a;
-  --axis: #383835;
-  --accent: #3987e5;
-  --accent-hover: #5598e7;
-  --accent-wash: #184f95;
-  --focus-ring: #5598e7;
-  --series-1: #3987e5;
-  --series-2: #d95926;
+    --page: #0f1112;
+  --surface-1: #181c1b;
+  --surface-2: #212524;
+  --surface-3: #2b2f2e;
+  --overlay: rgba(0, 0, 0, 0.62);
+  --text-primary: #f7f7fa;
+  --text-secondary: #b9bac4;
+  --text-muted: #85868f;
+  --text-inverse: #12131a;
+  --border: rgba(247, 247, 250, 0.11);
+  --border-strong: rgba(247, 247, 250, 0.2);
+  --gridline: #2b2f2e;
+  --axis: #3a3e3d;
+  --accent: #7d74e4;
+  --accent-hover: #948cec;
+  --accent-wash: #2f2a66;
+  --focus-ring: #948cec;
+  --series-1: #7d74e4;
+  --series-2: #dd6a50;
   --good-text: #0ca30c;
   --shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--border);
   --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.6);

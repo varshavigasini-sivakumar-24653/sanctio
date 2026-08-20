@@ -132,12 +132,33 @@ Spacing scale: **4 / 8 / 12 / 16 / 24 / 32 / 48**. Nothing off-scale.
 
 ## 3. Charts
 
-Validated against the surfaces above with the skill's validator — all checks PASS in both modes:
+**Palette: indigo + coral on warm paper.** Chosen over the more usual blue/orange
+because a credit desk built in default blue looks like every other dashboard — the
+indigo reads considered rather than stock, and the warm off-white surface keeps it
+from feeling cold and clinical.
+
+Validated with the skill's validator against these exact surfaces — all six checks
+PASS in both modes:
 
 ```
-2-series, light (#2a78d6, #eb6834 on #fcfcfb): CVD ΔE 24.7 · normal 33.6 · contrast ≥3:1 → PASS
-2-series, dark  (#3987e5, #d95926 on #1a1a19): CVD ΔE 26.8 · normal 31.8 · contrast ≥3:1 → PASS
+light  #4f46e5 / #e0533d on #fdfcf9 : CVD ΔE 28.5 · normal 36.5 · contrast ≥3:1 → PASS
+dark   #7d74e4 / #dd6a50 on #181c1b : CVD ΔE 23.1 · normal 26.0 · contrast ≥3:1 → PASS
 ```
+
+Accent as UI text and marks: **6.13:1** on light, **4.50:1** on dark, white on accent
+**6.29:1**. Body ink 18.1:1 light / 16.1:1 dark.
+
+Candidates rejected by the validator, recorded so nobody re-tries them: teal+amber and
+teal+terracotta both **fail the light chroma floor** — the teal measures 0.086 against a
+0.1 minimum and reads as grey rather than as a colour. Violet+amber and emerald+plum
+pass light but their dark steps fall outside the dark lightness band. This is exactly
+why the palette is computed and not eyeballed.
+
+**Known tension:** series-2 coral shares a hue family with `--critical` and
+`--serious`. The status palette owns red/amber/green, so *any* warm second series
+neighbours it. Mitigation is the documented one — status is never colour-alone (every
+pill carries a dot **and** a label) and the single two-series chart carries a legend.
+Never let hue alone separate a coral series mark from a critical status mark.
 
 Chart inventory for the Deal Desk, with the form chosen by the data's job:
 
