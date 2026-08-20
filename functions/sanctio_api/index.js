@@ -27,6 +27,14 @@ const projects = require('./projects');
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
+// The client is hosted on Catalyst Slate (onslate.in), a different origin from this
+// Advanced I/O function (catalystserverless.in). CORS is handled entirely at the
+// Catalyst project level (CORS domain allowlist) rather than here — the platform's
+// edge already injects Access-Control-Allow-* headers for allowlisted origins, and
+// adding a second set from Express produces duplicate/conflicting header values
+// that browsers reject outright (curl doesn't care about duplicates, which made this
+// look fine from the command line while every real browser request failed).
+
 // ── Auth ───────────────────────────────────────────────────────────────────────
 
 app.get('/api/auth/roster', (_req, res) => res.json({ roles: publicRoster() }));

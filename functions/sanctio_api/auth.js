@@ -129,10 +129,15 @@ function login(username, password) {
   };
 }
 
-/** Express middleware — attaches req.session or 401s. */
+/** Express middleware — attaches req.session or 401s.
+ *
+ * Reads the session token from a custom header rather than `Authorization` —
+ * deployed on Catalyst, that header is intercepted by the platform's own OAuth
+ * check (its Security Rules only offer "optional"/"required", never "disabled"),
+ * so a bearer token in `Authorization` never reaches this code at all in
+ * production. A differently-named header is invisible to that check. */
 function requireSession(req, res, next) {
-  const header = req.headers.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  const token = req.headers['x-sanctio-token'] || null;
   const session = token && verify(token);
   if (!session) {
     return res.status(401).json({ error: 'Not signed in', code: 'NO_SESSION' });

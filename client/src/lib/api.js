@@ -4,6 +4,14 @@
 
 const TOKEN_KEY = 'sanctio-token';
 
+// The client (Catalyst Slate, onslate.in) and the BFF (a Catalyst Advanced I/O
+// function, catalystserverless.in) are on different origins in production — the dev
+// proxy in vite.config.js only exists for `vite dev` and has no effect on the built
+// static bundle. VITE_API_BASE (set in client/.env.production) points at the
+// function's real invoke URL for the deployed build; falling back to relative `/api`
+// keeps local dev working unchanged.
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+
 export const getToken = () => sessionStorage.getItem(TOKEN_KEY);
 export const setToken = (t) => sessionStorage.setItem(TOKEN_KEY, t);
 export const clearToken = () => sessionStorage.removeItem(TOKEN_KEY);
@@ -21,11 +29,15 @@ async function request(method, path, body) {
   let res;
 
   try {
-    res = await fetch(`/api${path}`, {
+    res = await fetch(`${API_BASE}${path}`, {
       method,
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        // Not `Authorization` — Catalyst's own gateway intercepts that header for
+        // its platform-level OAuth check regardless of the Security Rules setting
+        // (only "optional"/"required" exist, never "disabled"), so a bearer token
+        // there never reaches the function's own code once deployed.
+        ...(token ? { 'X-Sanctio-Token': token } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
