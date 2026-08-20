@@ -164,13 +164,30 @@ app.post(
 
 app.use((err, _req, res, _next) => {
   console.error(err);
-  const configIssue = /SESSION_SECRET|ZOHO_/.test(err.message || '');
-  res.status(configIssue ? 503 : 500).json({
-    error: configIssue
-      ? 'Server is not fully configured — see functions/sanctio_api/README'
-      : 'Something went wrong',
-    detail: err.message,
-  });
+
+  // Distinguish "nobody has configured this yet" from "the code broke". The first is
+  // the expected state before the OAuth token exists, and the message has to say what
+  // to actually do about it — a generic failure here sends people debugging the app
+  // when the answer is three environment variables.
+  const missingZoho = /ZOHO_(CLIENT_ID|CLIENT_SECRET|REFRESH_TOKEN)/.test(err.message || '');
+  const missingSecret = /SESSION_SECRET/.test(err.message || '');
+
+  if (missingZoho) {
+    return res.status(503).json({
+      error: 'Not connected to Zoho Projects yet',
+      hint: 'Set ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET and ZOHO_REFRESH_TOKEN. See "OAuth self-client" in the repo README.',
+      code: 'ZOHO_NOT_CONFIGURED',
+    });
+  }
+  if (missingSecret) {
+    return res.status(503).json({
+      error: 'Server is missing its session secret',
+      hint: 'Set SESSION_SECRET on this environment.',
+      code: 'SESSION_SECRET_MISSING',
+    });
+  }
+
+  res.status(500).json({ error: 'Something went wrong', detail: err.message });
 });
 
 module.exports = app;

@@ -50,7 +50,10 @@ async function request(method, path, body) {
   }
 
   if (!res.ok) {
-    throw new ApiError(payload.error || `Request failed (${res.status})`, res.status, payload);
+    // Surface the server's `hint` alongside the error. A bare "Failed to load" sends
+    // people debugging the app when the fix is a missing environment variable.
+    const base = payload.error || `Request failed (${res.status})`;
+    throw new ApiError(payload.hint ? `${base} — ${payload.hint}` : base, res.status, payload);
   }
   return payload;
 }

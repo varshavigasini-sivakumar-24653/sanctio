@@ -11,12 +11,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Local dev talks to the deployed Catalyst function so the frontend can be
-      // developed against real Zoho Projects data without running the backend.
+      // Defaults to the local BFF (functions/sanctio_api/local.js on :3001) so sign-in
+      // works without deploying. Point SANCTIO_API at the Catalyst URL to develop the
+      // frontend against the deployed backend instead.
       '/api': {
-        target:
-          process.env.SANCTIO_API ||
-          'https://sanctio-60083985672.development.catalystserverless.in',
+        target: process.env.SANCTIO_API || 'http://localhost:3001',
         changeOrigin: true,
         secure: true,
       },
