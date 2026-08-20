@@ -1,0 +1,27 @@
+{
+  "project_details": {
+    "project_name": "sanctio",
+    "id": 54342000000013055,
+    "org_id": 60083985672
+  },
+  "functions": {
+    "targets": [
+      {
+        "name": "sanctio_api",
+        "source": "functions/sanctio_api",
+        "stack": "node18",
+        "type": "advancedio",
+        "memory": 256,
+        "timeout": 30
+      }
+    ]
+  },
+  "client": {
+    "targets": [
+      {
+        "name": "sanctio_client",
+        "source": "client/dist"
+      }
+    ]
+  }
+}
