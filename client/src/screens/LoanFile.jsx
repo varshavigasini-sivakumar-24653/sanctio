@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
 import { Avatar, EmptyState, ErrorState, Money, Pill, Skeleton } from '../components/ui';
@@ -81,18 +82,18 @@ export default function LoanFile() {
 
   if (loading) {
     return (
-      <div className="stack gap-16" style={{ padding: 24 }}>
+      <div className="stack gap-4 p-6">
         <Skeleton height={16} width={140} />
         <Skeleton height={28} width={320} />
-        <Skeleton height={64} radius={10} />
-        <Skeleton height={280} radius={10} />
+        <Skeleton height={64} radius={16} />
+        <Skeleton height={280} radius={16} />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div style={{ padding: 24 }}>
+      <div className="p-6">
         <ErrorState message={error.message} onRetry={reload} />
       </div>
     );
@@ -111,9 +112,10 @@ export default function LoanFile() {
   };
 
   return (
-    <div className="stack gap-20" style={{ padding: 24 }}>
-      <Link to="/pipeline" className="t-meta" style={{ textDecoration: 'none' }}>
-        ← Pipeline
+    <div className="stack gap-6 p-6">
+      <Link to="/pipeline" className="t-meta row w-fit gap-1 no-underline hover:text-[var(--text-primary)]">
+        <ArrowLeft size={13} />
+        Pipeline
       </Link>
 
       {/* Header */}
@@ -147,13 +149,13 @@ export default function LoanFile() {
         </div>
       </div>
 
-      <div className="card" style={{ padding: 16 }}>
+      <div className="card p-5">
         <StageRail currentStage={loan.currentStage} stageTat={loan.stageTat} />
       </div>
 
       {/* Summary + tabs */}
-      <div className="row gap-16" style={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div className="card stack" style={{ padding: 16, minWidth: 300, flex: '1 1 320px' }}>
+      <div className="row gap-4" style={{ alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div className="card stack p-5" style={{ minWidth: 300, flex: '1 1 320px' }}>
           <span className="t-section" style={{ marginBottom: 8 }}>
             File
           </span>
@@ -194,7 +196,7 @@ export default function LoanFile() {
             ))}
           </div>
 
-          <div style={{ padding: 16 }}>
+          <div className="p-5">
             {byTab[tab].length === 0 ? (
               <EmptyState
                 title={`No ${tab.toLowerCase()} yet`}

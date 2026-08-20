@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Search } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
 import { EmptyState, ErrorState, Money, Pill, Skeleton } from '../components/ui';
@@ -50,6 +51,8 @@ export default function ModuleList() {
   const mod = moduleByApi(module);
   const [q, setQ] = useState('');
   const [sort, setSort] = useState(null);
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(1);
 
   const { data, error, loading, reload } = useAsync(() => api.moduleRecords(module), [module]);
 
@@ -78,6 +81,16 @@ export default function ModuleList() {
     return out;
   }, [data, q, sort]);
 
+  // A page size change, a new search, a re-sort, or switching modules can all strand
+  // the current page past the new end — snap back to page 1 whenever any of them fire.
+  useEffect(() => {
+    setPage(1);
+  }, [q, sort, pageSize, module]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageRows = rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   if (!mod) {
     return (
       <div style={{ padding: 24 }}>
@@ -90,25 +103,28 @@ export default function ModuleList() {
     setSort((s) => (s?.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
 
   return (
-    <div className="stack gap-16" style={{ padding: 24 }}>
-      <div className="row gap-16" style={{ flexWrap: 'wrap' }}>
-        <div className="stack gap-4 grow">
+    <div className="stack gap-6 p-6">
+      <div className="row flex-wrap gap-4">
+        <div className="stack grow gap-1">
           <h1 className="t-page-title">{mod.label}</h1>
           <span className="t-meta">{mod.blurb}</span>
         </div>
-        <input
-          className="input"
-          style={{ width: 260 }}
-          type="search"
-          placeholder={`Search ${mod.label.toLowerCase()}…`}
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          aria-label={`Search ${mod.label}`}
-        />
+        <div className="relative">
+          <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted" />
+          <input
+            className="input pl-8"
+            style={{ width: 260 }}
+            type="search"
+            placeholder={`Search ${mod.label.toLowerCase()}…`}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            aria-label={`Search ${mod.label}`}
+          />
+        </div>
       </div>
 
       {loading && (
-        <div className="card stack gap-8" style={{ padding: 16 }}>
+        <div className="card stack gap-2 p-4">
           {[0, 1, 2, 3, 4, 5].map((i) => (
             <Skeleton key={i} height={32} />
           ))}
@@ -172,14 +188,16 @@ export default function ModuleList() {
                     >
                       <button
                         type="button"
-                        className="btn btn-ghost"
+                        className="btn btn-ghost gap-1"
                         onClick={() => toggleSort(col.key)}
                         style={{ height: 22, padding: 0, fontSize: 11.5, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}
                         aria-label={`Sort by ${col.label}`}
                       >
                         {col.label}
-                        {sort?.key === col.key && (
-                          <span aria-hidden="true">{sort.dir === 'asc' ? '↑' : '↓'}</span>
+                        {sort?.key === col.key ? (
+                          sort.dir === 'asc' ? <ArrowUp size={12} aria-hidden="true" /> : <ArrowDown size={12} aria-hidden="true" />
+                        ) : (
+                          <ChevronsUpDown size={12} aria-hidden="true" className="opacity-40" />
                         )}
                       </button>
                     </th>
@@ -187,16 +205,17 @@ export default function ModuleList() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => (
+                {pageRows.map((row, i) => (
                   <tr
                     key={row.id || i}
-                    style={{ borderBottom: '1px solid var(--border)' }}
+                    className="transition-colors duration-150 hover:bg-[var(--surface-2)]"
+                    style={{ background: i % 2 === 1 ? 'var(--surface-2)' : 'transparent' }}
                   >
                     {mod.columns.map((col) => (
                       <td
                         key={col.key}
                         style={{
-                          padding: '10px 12px',
+                          padding: '11px 12px',
                           fontSize: 14,
                           maxWidth: col.width,
                           overflow: 'hidden',
@@ -214,11 +233,55 @@ export default function ModuleList() {
             </table>
           </div>
 
-          <span className="t-meta num">
-            {rows.length === data.rows.length
-              ? `${data.rows.length} records`
-              : `${rows.length} of ${data.rows.length} records`}
-          </span>
+          <div className="row flex-wrap gap-3">
+            <span className="t-meta num grow">
+              {rows.length === 0
+                ? '0 records'
+                : `${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, rows.length)} of ${rows.length}${
+                    rows.length === data.rows.length ? '' : ` (of ${data.rows.length} total)`
+                  } records`}
+            </span>
+
+            <div className="row gap-2">
+              <span className="t-meta">Show</span>
+              <select
+                className="input h-8 w-auto px-2 py-0 text-[13px]"
+                value={pageSize}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                aria-label="Records per page"
+              >
+                {[5, 10, 25, 50].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="row gap-1">
+              <button
+                type="button"
+                className="btn btn-secondary h-8 px-2.5"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+                aria-label="Previous page"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="t-meta num px-1">
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                className="btn btn-secondary h-8 px-2.5"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage >= totalPages}
+                aria-label="Next page"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
         </>
       )}
     </div>

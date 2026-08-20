@@ -21,7 +21,7 @@ function DeviationCard({ dev, onDecide, busy }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="card stack gap-12" style={{ padding: 16 }}>
+    <div className="card stack gap-3 p-5 transition-shadow duration-150 hover:shadow-lift">
       <div className="row gap-12">
         <Pill tone={TONE[dev.severity] || 'neutral'}>{dev.severity}</Pill>
         <span className="t-meta grow">
@@ -91,9 +91,14 @@ function DeviationCard({ dev, onDecide, busy }) {
   );
 }
 
+/* The three demo roles are meant to be tried in one sitting (see Login.jsx) — a
+ * reviewer who lands here as the RM shouldn't have to log out to see it populated. */
+const CREDIT_OFFICER_DEMO = { username: 'credit@sanctio.demo', password: 'SanctioCR2026' };
+
 export default function CreditDesk() {
-  const { can, user } = useAuth();
+  const { can, user, signIn } = useAuth();
   const [busy, setBusy] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const { data, error, loading, reload } = useAsync(() => api.deviations(), []);
 
   const decide = async (dev, decision, note) => {
@@ -110,18 +115,36 @@ export default function CreditDesk() {
 
   if (!can('deviation')) {
     return (
-      <div style={{ padding: 24 }}>
+      <div className="p-6">
         <EmptyState
           title="Credit Desk is for credit and risk officers"
-          hint={`You are signed in as ${user.title}. Sign in as the Credit & Risk Officer to appraise files and decide deviations.`}
+          hint={`You are signed in as ${user.title}. Switch to the Credit & Risk Officer to appraise files and decide deviations.`}
+          action={
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={switching}
+              onClick={async () => {
+                setSwitching(true);
+                try {
+                  await signIn(CREDIT_OFFICER_DEMO.username, CREDIT_OFFICER_DEMO.password);
+                } catch (e) {
+                  alert(e.message);
+                  setSwitching(false);
+                }
+              }}
+            >
+              {switching ? 'Switching…' : 'Continue as Credit & Risk Officer'}
+            </button>
+          }
         />
       </div>
     );
   }
 
   return (
-    <div className="stack gap-16" style={{ padding: 24, maxWidth: 860 }}>
-      <div className="stack gap-4">
+    <div className="stack gap-6 p-6" style={{ maxWidth: 860 }}>
+      <div className="stack gap-1">
         <h1 className="t-page-title">Credit Desk</h1>
         <span className="t-meta">
           Policy deviations awaiting your authority, newest first
@@ -129,9 +152,9 @@ export default function CreditDesk() {
       </div>
 
       {loading && (
-        <div className="stack gap-12">
-          <Skeleton height={148} radius={10} />
-          <Skeleton height={148} radius={10} />
+        <div className="stack gap-3">
+          <Skeleton height={148} radius={16} />
+          <Skeleton height={148} radius={16} />
         </div>
       )}
 
@@ -145,7 +168,7 @@ export default function CreditDesk() {
       )}
 
       {data?.deviations?.length > 0 && (
-        <div className="stack gap-12">
+        <div className="stack gap-3">
           {data.deviations.map((dev) => (
             <DeviationCard key={dev.id} dev={dev} onDecide={decide} busy={busy} />
           ))}

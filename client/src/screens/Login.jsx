@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import { AlertCircle, ArrowRight } from 'lucide-react';
 import { Mark, ThemeToggle } from '../components/ui';
 import { useAuth } from '../lib/providers';
 
@@ -75,7 +77,12 @@ export default function Login() {
   return (
     <div
       className="stack"
-      style={{ minHeight: '100%', background: 'var(--page)', padding: 24 }}
+      style={{
+        minHeight: '100%',
+        padding: 24,
+        background:
+          'radial-gradient(900px 500px at 50% -10%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 60%), radial-gradient(700px 420px at 100% 100%, color-mix(in srgb, #10B981 13%, transparent), transparent 60%), radial-gradient(650px 380px at 0% 90%, color-mix(in srgb, #F59E0B 10%, transparent), transparent 60%), var(--page)',
+      }}
     >
       <div className="row" style={{ justifyContent: 'flex-end' }}>
         <ThemeToggle />
@@ -136,10 +143,7 @@ export default function Login() {
             {/* Inline, next to the fields — never a browser alert or a toast. */}
             {error && (
               <div className="field-error" id="login-error" role="alert">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="9" />
-                  <path d="M12 8v4M12 16h.01" strokeLinecap="round" />
-                </svg>
+                <AlertCircle size={14} />
                 {error}
               </div>
             )}
@@ -163,45 +167,36 @@ export default function Login() {
               <hr className="hairline grow" />
             </div>
 
-            <div className="stack gap-8">
-              {DEMO_ROLES.map((role) => (
-                <button
+            <div className="stack gap-2">
+              {DEMO_ROLES.map((role, i) => (
+                <motion.button
                   key={role.username}
                   type="button"
-                  className="card row gap-12"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25, delay: i * 0.05 }}
+                  whileHover={busy === null ? { y: -2 } : undefined}
+                  className="card row gap-3 p-3.5 text-left transition-[border-color,box-shadow] duration-150 hover:border-primary hover:shadow-lift disabled:cursor-not-allowed"
                   onClick={() => useRole(role)}
                   disabled={busy !== null}
                   /* Without this the accessible name is the concatenated child text —
                    * "Relationship ManagerOriginates loan files, maintains borrowers…".
                    * Screen readers announce the run-together string. */
                   aria-label={`Sign in as ${role.title}, ${role.name}`}
-                  style={{
-                    padding: 12,
-                    textAlign: 'left',
-                    cursor: busy !== null ? 'not-allowed' : 'pointer',
-                    background: 'var(--surface-1)',
-                    transition: 'border-color 150ms ease-out, background 150ms ease-out',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (busy === null) e.currentTarget.style.borderColor = 'var(--accent)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = 'var(--border)';
-                  }}
                 >
-                  <span className="stack grow gap-4">
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>{role.title}</span>
+                  <span className="stack grow gap-1">
+                    <span className="text-[13px] font-semibold">{role.title}</span>
                     <span className="t-meta">{role.blurb}</span>
                   </span>
-                  <span className="t-meta" style={{ flex: 'none' }}>
-                    {busy === role.username ? 'Signing in…' : '→'}
+                  <span className="t-meta row flex-none gap-1">
+                    {busy === role.username ? 'Signing in…' : <ArrowRight size={14} />}
                   </span>
-                </button>
+                </motion.button>
               ))}
             </div>
           </div>
 
-          <p className="t-meta" style={{ textAlign: 'center' }}>
+          <p className="t-meta text-center">
             Loan data lives in Zoho Projects · Hosted on Zoho Catalyst
           </p>
         </div>

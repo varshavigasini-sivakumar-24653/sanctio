@@ -291,3 +291,14 @@ is no way to reconcile this from outside Zoho. Practical takeaway: don't hardcod
 number into retry logic. Cache aggressively so the limit is rarely approached, back off
 on the specific error rather than a guessed threshold, and treat whatever the live
 response says as more current than any doc.
+
+---
+
+## 12. A field named "Due Date" silently derives to a generic `cf_XXXX` name
+
+On `sanction_condition`, creating a field display-named "Due Date" returned
+`field_name: "sanction_condition_cf_0001"` instead of the expected `due_date` — no error,
+no warning, just a different derived name than every other field got. Cause unconfirmed
+(likely a reserved-name collision somewhere in the portal's shared namespace). Always
+read the `field_name` back off the create response rather than assuming it matches the
+label — the same lesson as #3, but this time the label wasn't unusual at all.

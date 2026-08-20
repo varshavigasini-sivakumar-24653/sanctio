@@ -558,8 +558,148 @@ async function fetchLoanProjects() {
       daysOver: slaDays && daysInStage ? Math.max(daysInStage - slaDays, 0) : 0,
       owner: p.owner?.full_name || p.owner_name || null,
       openIssues: (p.issues?.open_count ?? 0) + (p.issues?.closed_count ?? 0),
+      originatedOn: p.created_time || null,
     };
     });
+}
+
+/* ── New Application ──────────────────────────────────────────────────────────
+ *
+ * A loan file is a Project, so origination is a real project-creation call, not a
+ * simulated one — the "New Application" button previously just navigated to the
+ * Pipeline board with nothing behind it. Field values and date-format quirks here
+ * mirror scripts/seed.mjs and scripts/seed-workflow.mjs exactly, since those are the
+ * only recipes proven to work against this portal (BROKE.md #9). */
+
+const LOAN_PRODUCTS = ['Working Capital', 'Term Loan', 'Equipment Finance', 'Project Finance', 'Trade Finance'];
+const SECTORS = [
+  'Agri Processing',
+  'Auto Components',
+  'Chemicals',
+  'IT and ITES',
+  'Infrastructure',
+  'Logistics',
+  'Manufacturing',
+  'Pharmaceuticals',
+  'Retail',
+  'Textiles',
+];
+const FIRST_STAGE = 'Origination and Lead Capture';
+const FIRST_STAGE_SLA_DAYS = 2;
+
+// Phases want MM-DD-YYYY; everything else (tasks, project start_date, custom Date
+// fields) wants YYYY-MM-DD. Same API, same request shape, different format — see
+// BROKE.md #9.
+const usDate = (iso) => {
+  const [y, m, d] = iso.split('-');
+  return `${m}-${d}-${y}`;
+};
+
+let ownerZpuidCache = null;
+
+/** The project-creation payload wants a `zpuid` (a Zoho Projects portal-user id),
+ * not the `zuid` (Zoho-account-wide id) — the two look interchangeable but are not,
+ * and a self-client token's `/users/me` scope is blocked (BROKE.md #5) so it can't be
+ * looked up directly. Every existing project's `owner.zpuid` is real and already
+ * proven to work, so that is the reliable source — falling back to `/users/me` only
+ * in case a future scope grant makes it available, then an env var for a fresh
+ * portal with no projects yet. */
+async function ownerZpuid() {
+  if (ownerZpuidCache) return ownerZpuidCache;
+
+  const me = await zoho('GET', `/portal/${PORTAL}/users/me`).catch(() => null);
+  const fromMe = me?.data?.result?.[0]?.zpuid || me?.data?.zpuid;
+  if (fromMe) {
+    ownerZpuidCache = fromMe;
+    return ownerZpuidCache;
+  }
+
+  const list = unwrap(await zoho('GET', `/portal/${PORTAL}/projects?page=1&per_page=1`).catch(() => []));
+  ownerZpuidCache = list[0]?.owner?.zpuid || process.env.ZOHO_OWNER_ZPUID || null;
+  if (!ownerZpuidCache) {
+    throw new Error('Could not resolve a project owner zpuid — set ZOHO_OWNER_ZPUID');
+  }
+  return ownerZpuidCache;
+}
+
+/** LN-2026-0048 -> next unused LN-2026-0049 for the current year, independent of
+ * gaps in the existing sequence (files are not deleted, but the demo data was not
+ * seeded strictly in order either). */
+function nextLoanReference(loans) {
+  const year = new Date().getFullYear();
+  let max = 0;
+  for (const l of loans) {
+    const m = /^LN-(\d{4})-(\d+)$/.exec(l.loanReference || '');
+    if (m && Number(m[1]) === year) max = Math.max(max, Number(m[2]));
+  }
+  return `LN-${year}-${String(max + 1).padStart(4, '0')}`;
+}
+
+async function createLoanFile({ borrowerName, loanProduct, sector, totalRequestedCr }, session) {
+  const loans = await loanProjects();
+  const loanReference = nextLoanReference(loans);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { byLabel } = await fields('projects');
+  const custom = {};
+  const set = (label, value) => {
+    const api = byLabel.get(label);
+    if (api) custom[api] = value;
+  };
+  set('Loan Reference', loanReference);
+  set('Borrower Name', borrowerName);
+  set('Loan Product', loanProduct);
+  set('Sector', sector);
+  set('Current Stage', FIRST_STAGE);
+  set('Workflow State', 'Draft');
+  set('Total Requested Cr', totalRequestedCr);
+  set('Stage Entered On', today);
+  set('Stage SLA Days', FIRST_STAGE_SLA_DAYS);
+
+  const owner = await ownerZpuid();
+  const created = await zoho('POST', `/portal/${PORTAL}/projects`, {
+    name: `${loanReference} · ${borrowerName}`,
+    owner: { zpuid: String(owner) },
+    start_date: today,
+    description: `${loanProduct} facility for ${borrowerName}. Originated by ${session.name} (${session.title}).`,
+    ...custom,
+  });
+  // zoho() returns the bare parsed body — unlike scripts/zoho.mjs's api(), it does
+  // not wrap the response in {data: ...}, so the id is top-level.
+  const projectId = created?.id || created?.data?.id || created?.data?.result?.[0]?.id;
+  if (!projectId) {
+    throw new Error(`Zoho did not return a project id: ${JSON.stringify(created).slice(0, 300)}`);
+  }
+
+  // Best-effort — the loan file is real the moment the project exists; a missing
+  // phase mirror would just mean the file-detail timeline starts one entry short.
+  await zoho('POST', `/portal/${PORTAL}/projects/${projectId}/phases`, {
+    name: FIRST_STAGE,
+    start_date: usDate(today),
+    end_date: usDate(today),
+  }).catch(() => null);
+
+  cache.delete('projects');
+
+  return {
+    projectId: String(projectId),
+    loanReference,
+    borrowerName,
+    loanProduct,
+    sector,
+    currentStage: FIRST_STAGE,
+    workflowState: 'Draft',
+    internalRating: null,
+    totalRequestedCr: Number(totalRequestedCr),
+    totalSanctionedCr: null,
+    stageEnteredOn: today,
+    slaDays: FIRST_STAGE_SLA_DAYS,
+    daysInStage: 0,
+    daysOver: 0,
+    owner: session.name,
+    openIssues: 0,
+    originatedOn: new Date().toISOString(),
+  };
 }
 
 async function pipeline() {
@@ -947,4 +1087,7 @@ module.exports = {
   decideDeviation,
   verifyCondition,
   releaseTranche,
+  createLoanFile,
+  LOAN_PRODUCTS,
+  SECTORS,
 };

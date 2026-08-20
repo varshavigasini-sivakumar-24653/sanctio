@@ -123,8 +123,8 @@ function GradeBars({ byGrade, total }) {
 
 function Panel({ title, note, children }) {
   return (
-    <div className="card stack gap-16" style={{ padding: 16, flex: '1 1 420px', minWidth: 340 }}>
-      <div className="stack gap-4">
+    <div className="card stack gap-4 p-5" style={{ flex: '1 1 420px', minWidth: 340 }}>
+      <div className="stack gap-1">
         <span className="t-section">{title}</span>
         {note && <span className="t-meta">{note}</span>}
       </div>

@@ -1,61 +1,53 @@
+import { AlertTriangle, Banknote, CheckCircle2, Layers, Wallet } from 'lucide-react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { api } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
-import { ErrorState, Money, Pill, Skeleton, StatTile } from '../components/ui';
+import { ErrorState, KpiCard, Money, Pill, Skeleton } from '../components/ui';
 import Concentration from '../components/Concentration';
 import { days, money } from '../lib/format';
+import { SHORT, STAGES, STAGE_COLOR } from '../lib/stages';
 
-/* Charts are hand-rolled SVG rather than a charting library: it keeps the bundle
- * small, and more importantly it keeps the marks under our control so they use the
- * validated series colours and the spacer rules from docs/DESIGN.md §3.
- *
- * Rules honoured here: single hue for single-series magnitude, two validated hues
- * for the one two-series chart, 4px rounded data-ends anchored to the baseline,
- * recessive gridlines, one axis (never dual), hover tooltip on every mark, and a
- * legend whenever there are two series. */
-
-function HBars({ rows, max, unit = 'cr', reference, height = 22 }) {
-  const ceiling = max || Math.max(...rows.map((r) => r.value), 1);
+/* The turnaround-by-stage bars stay hand-rolled SVG: each row needs a reference mark
+ * at THAT stage's own SLA, which a shared-axis Recharts bar can't express cleanly.
+ * Applications-by-stage, exposure-by-sector and sanctioned-vs-disbursed move to
+ * Recharts per the brief — plain categorical bars, no per-row reference needed. */
+function TurnaroundBars({ rows }) {
+  const ceiling = Math.max(...rows.map((r) => Math.max(r.actualDays, r.slaDays)), 1);
   return (
-    <div className="stack gap-8">
+    <div className="stack gap-3">
       {rows.map((r) => {
-        const w = Math.max((r.value / ceiling) * 100, r.value > 0 ? 1.5 : 0);
-        const over = reference != null && r.value > reference;
+        const w = Math.max((r.actualDays / ceiling) * 100, r.actualDays > 0 ? 1.5 : 0);
+        const over = r.actualDays > r.slaDays;
         return (
-          <div key={r.label} className="row gap-12">
-            <span className="t-meta" style={{ width: 132, flex: 'none' }}>
-              {r.label}
-            </span>
+          <div key={r.stage} className="row gap-3">
+            <span className="t-meta w-[104px] flex-none truncate">{SHORT[r.stage] || r.stage}</span>
             <div
-              style={{ flex: 1, height, background: 'var(--surface-2)', borderRadius: 4, position: 'relative' }}
-              title={`${r.label}: ${unit === 'cr' ? money(r.value) : days(r.value)}`}
+              className="relative flex-1 rounded-md"
+              style={{ height: 20, background: 'var(--surface-2)' }}
+              title={`${r.stage}: ${days(r.actualDays)} actual vs ${days(r.slaDays)} SLA`}
             >
               <div
-                style={{
-                  width: `${w}%`,
-                  height: '100%',
-                  borderRadius: 4,
-                  background: over ? 'var(--critical)' : 'var(--series-1)',
-                  transition: 'width 200ms ease-out',
-                }}
+                className="h-full rounded-md transition-[width] duration-300"
+                style={{ width: `${w}%`, background: over ? 'var(--critical)' : 'var(--series-1)' }}
               />
-              {reference != null && (
-                <span
-                  aria-hidden="true"
-                  title={`SLA ${days(reference)}`}
-                  style={{
-                    position: 'absolute',
-                    left: `${(reference / ceiling) * 100}%`,
-                    top: -2,
-                    bottom: -2,
-                    width: 2,
-                    background: 'var(--axis)',
-                  }}
-                />
-              )}
+              <span
+                aria-hidden="true"
+                title={`SLA ${days(r.slaDays)}`}
+                className="absolute -top-0.5 -bottom-0.5 w-0.5"
+                style={{ left: `${(r.slaDays / ceiling) * 100}%`, background: 'var(--axis)' }}
+              />
             </div>
-            <span className="t-meta num" style={{ width: 76, flex: 'none', textAlign: 'right' }}>
-              {unit === 'cr' ? money(r.value) : days(r.value)}
-            </span>
+            <span className="t-meta num w-16 flex-none text-right">{days(r.actualDays)}</span>
           </div>
         );
       })}
@@ -63,60 +55,77 @@ function HBars({ rows, max, unit = 'cr', reference, height = 22 }) {
   );
 }
 
-function GroupedBars({ rows }) {
-  const ceiling = Math.max(...rows.flatMap((r) => [r.a, r.b]), 1);
-  return (
-    <div className="stack gap-12">
-      <div className="row gap-16">
-        {[
-          ['Sanctioned', 'var(--series-1)'],
-          ['Disbursed', 'var(--series-2)'],
-        ].map(([label, colour]) => (
-          <span key={label} className="row gap-4 t-meta">
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: colour }} />
-            {label}
-          </span>
-        ))}
-      </div>
+const chartTooltipStyle = {
+  background: 'var(--surface-1)',
+  border: '1px solid var(--border)',
+  borderRadius: 10,
+  fontSize: 12.5,
+};
 
-      <div className="row gap-16" style={{ alignItems: 'flex-end', height: 168 }}>
-        {rows.map((r) => (
-          <div key={r.label} className="stack gap-8 grow" style={{ alignItems: 'center' }}>
-            {/* 2px gap between adjacent fills so the marks never touch. */}
-            <div className="row" style={{ gap: 2, alignItems: 'flex-end', height: 136 }}>
-              <div
-                title={`${r.label} sanctioned: ${money(r.a)}`}
-                style={{
-                  width: 18,
-                  height: `${Math.max((r.a / ceiling) * 100, 1)}%`,
-                  background: 'var(--series-1)',
-                  borderRadius: '4px 4px 0 0',
-                }}
-              />
-              <div
-                title={`${r.label} disbursed: ${money(r.b)}`}
-                style={{
-                  width: 18,
-                  height: `${Math.max((r.b / ceiling) * 100, 1)}%`,
-                  background: 'var(--series-2)',
-                  borderRadius: '4px 4px 0 0',
-                }}
-              />
-            </div>
-            <span className="t-meta" style={{ textAlign: 'center' }}>
-              {r.label}
-            </span>
-          </div>
-        ))}
-      </div>
+function ApplicationsByStageChart({ loans }) {
+  const data = STAGES.map((stage) => ({
+    stage: SHORT[stage],
+    count: loans.filter((l) => l.currentStage === stage).length,
+    color: STAGE_COLOR[stage],
+  }));
+  return (
+    <div style={{ height: 220 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ left: -20, right: 8 }}>
+          <CartesianGrid vertical={false} stroke="var(--gridline)" />
+          <XAxis dataKey="stage" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={{ stroke: 'var(--axis)' }} tickLine={false} interval={0} angle={-18} textAnchor="end" height={48} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={28} />
+          <Tooltip cursor={{ fill: 'var(--surface-2)' }} contentStyle={chartTooltipStyle} formatter={(v) => [`${v} application${v === 1 ? '' : 's'}`, '']} />
+          <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={36}>
+            {data.map((d) => (
+              <Cell key={d.stage} fill={d.color} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function ExposureBySectorChart({ rows }) {
+  const data = rows.map((r) => ({ sector: r.sector, amountCr: r.amountCr }));
+  return (
+    <div style={{ height: Math.max(data.length * 34, 120) }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} layout="vertical" margin={{ left: 8, right: 24 }}>
+          <CartesianGrid horizontal={false} stroke="var(--gridline)" />
+          <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={{ stroke: 'var(--axis)' }} tickLine={false} tickFormatter={(v) => money(v)} />
+          <YAxis type="category" dataKey="sector" width={128} tick={{ fontSize: 11.5, fill: 'var(--text-secondary)' }} axisLine={false} tickLine={false} />
+          <Tooltip cursor={{ fill: 'var(--surface-2)' }} contentStyle={chartTooltipStyle} formatter={(v) => [money(v), 'Sanctioned']} />
+          <Bar dataKey="amountCr" radius={[0, 6, 6, 0]} maxBarSize={18} fill="var(--series-1)" />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function SanctionedVsDisbursedChart({ rows }) {
+  return (
+    <div style={{ height: 220 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={rows} margin={{ left: -20, right: 8 }}>
+          <CartesianGrid vertical={false} stroke="var(--gridline)" />
+          <XAxis dataKey="facilityType" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={{ stroke: 'var(--axis)' }} tickLine={false} />
+          <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} tickFormatter={(v) => money(v)} width={56} />
+          <Tooltip cursor={{ fill: 'var(--surface-2)' }} contentStyle={chartTooltipStyle} formatter={(v) => money(v)} />
+          <Legend wrapperStyle={{ fontSize: 12 }} />
+          <Bar dataKey="sanctionedCr" name="Sanctioned" fill="var(--series-1)" radius={[6, 6, 0, 0]} maxBarSize={28} />
+          <Bar dataKey="disbursedCr" name="Disbursed" fill="var(--series-2)" radius={[6, 6, 0, 0]} maxBarSize={28} />
+        </BarChart>
+      </ResponsiveContainer>
     </div>
   );
 }
 
 function Panel({ title, note, children }) {
   return (
-    <div className="card stack gap-16" style={{ padding: 16, flex: '1 1 380px', minWidth: 320 }}>
-      <div className="stack gap-4">
+    <div className="card stack gap-4 p-5" style={{ flex: '1 1 380px', minWidth: 320 }}>
+      <div className="stack gap-1">
         <span className="t-section">{title}</span>
         {note && <span className="t-meta">{note}</span>}
       </div>
@@ -127,24 +136,26 @@ function Panel({ title, note, children }) {
 
 export default function DealDesk() {
   const { data, error, loading, reload } = useAsync(() => api.dashboard(), []);
+  const { data: pipelineData } = useAsync(() => api.pipeline(), []);
+  const { data: attentionData } = useAsync(() => api.attention(), []);
 
   if (loading) {
     return (
-      <div className="stack gap-16" style={{ padding: 24 }}>
+      <div className="stack gap-6 p-6">
         <Skeleton height={28} width={200} />
-        <div className="row gap-16">
+        <div className="row gap-4">
           {[0, 1, 2, 3].map((i) => (
             <div key={i} className="grow">
-              <Skeleton height={96} radius={10} />
+              <Skeleton height={124} radius={16} />
             </div>
           ))}
         </div>
-        <div className="row gap-16">
+        <div className="row gap-4">
           <div className="grow">
-            <Skeleton height={280} radius={10} />
+            <Skeleton height={280} radius={16} />
           </div>
           <div className="grow">
-            <Skeleton height={280} radius={10} />
+            <Skeleton height={280} radius={16} />
           </div>
         </div>
       </div>
@@ -153,7 +164,7 @@ export default function DealDesk() {
 
   if (error) {
     return (
-      <div style={{ padding: 24 }}>
+      <div className="p-6">
         <ErrorState message={error.message} onRetry={reload} />
       </div>
     );
@@ -162,90 +173,116 @@ export default function DealDesk() {
   const d = data;
 
   return (
-    <div className="stack gap-16" style={{ padding: 24 }}>
-      <div className="stack gap-4">
+    <div className="stack gap-6 p-6">
+      <div className="stack gap-1">
         <h1 className="t-page-title">Deal Desk</h1>
         <span className="t-meta">Portfolio position across {d.kpi.liveFiles} live files</span>
       </div>
 
-      <div className="row gap-16" style={{ flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 200px' }}>
-          <StatTile label="Live files" value={d.kpi.liveFiles} sub={`${d.kpi.sanctionedFiles} sanctioned`} />
-        </div>
-        <div style={{ flex: '1 1 200px' }}>
-          <StatTile label="Pipeline exposure" value={money(d.kpi.pipelineCr)} sub="requested" />
-        </div>
-        <div style={{ flex: '1 1 200px' }}>
-          <StatTile label="Sanctioned" value={money(d.kpi.sanctionedCr)} sub={`${money(d.kpi.disbursedCr)} disbursed`} />
-        </div>
-        <div style={{ flex: '1 1 200px' }}>
-          <StatTile
-            label="SLA breaches"
-            value={d.kpi.slaBreaches}
-            sub={d.kpi.slaBreaches > 0 ? 'Needs escalation' : 'All on track'}
-            tone={d.kpi.slaBreaches > 0 ? 'critical' : 'good'}
-          />
-        </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <KpiCard
+          icon={Layers}
+          label="Live files"
+          value={d.kpi.liveFiles}
+          sub={`${d.kpi.sanctionedFiles} sanctioned`}
+          tone="violet"
+        />
+        <KpiCard
+          icon={Wallet}
+          label="Pipeline exposure"
+          value={d.kpi.pipelineCr}
+          format={money}
+          sub="requested"
+          tone="warning"
+          delay={0.04}
+        />
+        <KpiCard
+          icon={CheckCircle2}
+          label="Sanctioned"
+          value={d.kpi.sanctionedCr}
+          format={money}
+          sub="approved to date"
+          tone="success"
+          delay={0.08}
+        />
+        <KpiCard
+          icon={Banknote}
+          label="Disbursed"
+          value={d.kpi.disbursedCr}
+          format={money}
+          sub="money out the door"
+          tone="info"
+          delay={0.12}
+        />
+        <KpiCard
+          icon={AlertTriangle}
+          label="Overdue tasks"
+          value={attentionData ? attentionData.counts.total : d.kpi.slaBreaches}
+          sub={
+            attentionData
+              ? `${attentionData.counts.critical} critical`
+              : d.kpi.slaBreaches > 0
+                ? 'Needs escalation'
+                : 'All on track'
+          }
+          tone="danger"
+          delay={0.16}
+        />
       </div>
 
-      <div className="row gap-16" style={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
+      <div className="row flex-wrap items-start gap-4">
+        <Panel title="Applications by stage" note="Live files currently sitting in each stage.">
+          {pipelineData ? (
+            <ApplicationsByStageChart loans={pipelineData.loans} />
+          ) : (
+            <Skeleton height={220} radius={12} />
+          )}
+        </Panel>
+
         <Panel
           title="Turnaround by stage"
           note="Average actual days from time logs. The line marks the stage SLA; bars past it are breaching."
         >
-          {d.tatByStage.map((s) => (
-            <HBars
-              key={s.stage}
-              rows={[{ label: s.stage, value: s.actualDays }]}
-              max={Math.max(...d.tatByStage.map((x) => Math.max(x.actualDays, x.slaDays)))}
-              unit="days"
-              reference={s.slaDays}
-            />
-          ))}
+          <TurnaroundBars rows={d.tatByStage} />
         </Panel>
+      </div>
 
+      <div className="row flex-wrap items-start gap-4">
         <Panel title="Exposure by sector" note="Sanctioned amount, largest first.">
-          <HBars rows={d.exposureBySector.map((s) => ({ label: s.sector, value: s.amountCr }))} />
+          <ExposureBySectorChart rows={d.exposureBySector} />
         </Panel>
-      </div>
 
-      <div className="row gap-16" style={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <Panel title="Sanctioned vs disbursed" note="By facility type.">
-          <GroupedBars
-            rows={d.sanctionedVsDisbursed.map((r) => ({
-              label: r.facilityType,
-              a: r.sanctionedCr,
-              b: r.disbursedCr,
-            }))}
-          />
-        </Panel>
-
-        <Panel title="Files breaching SLA" note="Oldest breach first — these need escalation today.">
-          {d.breaches.length === 0 ? (
-            <span className="t-meta">Nothing breaching. Every file is inside its stage SLA.</span>
-          ) : (
-            <div className="stack gap-8">
-              {d.breaches.map((b) => (
-                <div key={b.loanReference} className="row gap-12" style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-                  <span className="t-meta num" style={{ width: 104, flex: 'none' }}>
-                    {b.loanReference}
-                  </span>
-                  <span className="grow" style={{ fontSize: 13 }}>
-                    {b.borrowerName}
-                    <span className="t-meta" style={{ display: 'block' }}>
-                      {b.currentStage} · {days(b.daysInStage)} of {days(b.slaDays)}
-                    </span>
-                  </span>
-                  <Money cr={b.totalRequestedCr} />
-                  <Pill tone="critical">+{b.daysOver}d</Pill>
-                </div>
-              ))}
-            </div>
-          )}
+          <SanctionedVsDisbursedChart rows={d.sanctionedVsDisbursed} />
         </Panel>
       </div>
 
-      <hr className="hairline" style={{ margin: '8px 0' }} />
+      <Panel title="Files breaching SLA" note="Oldest breach first — these need escalation today.">
+        {d.breaches.length === 0 ? (
+          <span className="t-meta">Nothing breaching. Every file is inside its stage SLA.</span>
+        ) : (
+          <div className="stack gap-0.5">
+            {d.breaches.map((b, i) => (
+              <div
+                key={b.loanReference}
+                className={`row gap-3 rounded-xl px-3 py-2.5 ${i % 2 === 1 ? 'bg-[var(--surface-2)]/50' : ''}`}
+              >
+                <span className="t-meta num w-[100px] flex-none">{b.loanReference}</span>
+                <span className="grow text-[13px]">
+                  {b.borrowerName}
+                  <span className="t-meta block">
+                    {b.currentStage} · {days(b.daysInStage)} of {days(b.slaDays)}
+                  </span>
+                </span>
+                <Money cr={b.totalRequestedCr} />
+                <Pill tone="critical">+{b.daysOver}d</Pill>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <hr className="hairline" />
 
       <Concentration />
     </div>

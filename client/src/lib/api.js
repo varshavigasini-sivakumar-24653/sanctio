@@ -78,8 +78,10 @@ export const api = {
   moduleRecords: (module, ref) =>
     request('GET', `/modules/${encodeURIComponent(module)}${ref ? `?ref=${encodeURIComponent(ref)}` : ''}`),
   deviations: () => request('GET', '/deviations'),
+  loanOptions: () => request('GET', '/loans/options'),
 
   // Writes
+  createLoan: (body) => request('POST', '/loans', body),
   transition: (ref, transition, note) =>
     request('POST', `/loans/${encodeURIComponent(ref)}/transition`, { transition, note }),
   decideDeviation: (id, decision, note) =>

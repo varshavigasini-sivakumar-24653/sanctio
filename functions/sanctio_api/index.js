@@ -67,6 +67,13 @@ app.get('/api/pipeline', requireSession, async (_req, res, next) => {
   }
 });
 
+// Registered before the /:ref route below — Express matches path patterns in
+// registration order, not by specificity, so "options" would otherwise be read as
+// a loan reference and 404 as "Loan file not found".
+app.get('/api/loans/options', requireSession, (_req, res) => {
+  res.json({ products: projects.LOAN_PRODUCTS, sectors: projects.SECTORS });
+});
+
 app.get('/api/loans/:ref', requireSession, async (req, res, next) => {
   try {
     const detail = await projects.loanFile(req.params.ref);
@@ -174,6 +181,34 @@ app.get('/api/deviations', requireSession, async (req, res, next) => {
 });
 
 // ── Write endpoints — each gated on a role capability ───────────────────────────
+
+app.post(
+  '/api/loans',
+  requireSession,
+  requireCapability('loanfile.create'),
+  async (req, res, next) => {
+    const { borrowerName, loanProduct, sector, totalRequestedCr } = req.body || {};
+    const errors = [];
+    if (!String(borrowerName || '').trim()) errors.push('Borrower name is required');
+    if (!projects.LOAN_PRODUCTS.includes(loanProduct)) errors.push('Choose a valid loan product');
+    if (!projects.SECTORS.includes(sector)) errors.push('Choose a valid sector');
+    const amount = Number(totalRequestedCr);
+    if (!Number.isFinite(amount) || amount <= 0) errors.push('Requested amount must be a positive number');
+    if (errors.length) {
+      return res.status(400).json({ error: errors.join('; '), code: 'INVALID_INPUT' });
+    }
+
+    try {
+      const loan = await projects.createLoanFile(
+        { borrowerName: borrowerName.trim(), loanProduct, sector, totalRequestedCr: amount },
+        req.session,
+      );
+      res.status(201).json({ loan });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 app.post(
   '/api/loans/:ref/transition',

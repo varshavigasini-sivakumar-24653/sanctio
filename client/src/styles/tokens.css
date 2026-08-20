@@ -1,127 +1,144 @@
-/* Sanctio design tokens — see docs/DESIGN.md.
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Sanctio design tokens — premium enterprise SaaS pass.
  *
- * Palette: indigo + coral on warm paper. Chosen over the more usual blue/orange
- * because a credit desk built in default blue looks like every other dashboard; the
- * indigo reads considered rather than stock, and the warm off-white keeps it from
- * feeling cold.
+ * Palette: indigo primary on slate-white, with dedicated status hues (emerald /
+ * amber / red) that never double as chart series colours, and two chart-only hues
+ * (indigo / sky) that never double as status colours. Dark mode is a selected navy
+ * surface, not an inverted one.
  *
- * Dark mode is SELECTED, not inverted: the series hues are re-stepped for the dark
- * surface, not algorithmically lightened, and validated against it. Status colours
- * are mode-invariant by design.
- *
- * Both series pairs pass all six checks of the palette validator against these exact
- * surfaces:
- *   light #4f46e5 / #e0533d on #fdfcf9 — CVD ΔE 28.5, normal 36.5, contrast ≥3:1
- *   dark  #7d74e4 / #dd6a50 on #181c1b — CVD ΔE 23.1, normal 26.0, contrast ≥3:1
- * Accent contrast: 6.13:1 light, 4.50:1 dark; white on accent 6.29:1.
- * Do not hand-tune these — re-run scripts/validate_palette.js if they must change.
- *
- * KNOWN TENSION: series-2 coral sits in the same hue family as status-critical and
- * status-serious. The status palette owns red/amber/green, so any warm second series
- * neighbours it. Mitigation is the documented one — status is never colour-alone (the
- * pill carries a dot AND a label), and the single two-series chart carries a legend.
- * Never let hue alone distinguish a coral series mark from a critical status mark. */
+ * These variables back both the legacy inline `var(--...)` usages still present in a
+ * few screens and the Tailwind utility classes used everywhere else, so both layers
+ * stay in sync from one source. */
 
 :root {
   color-scheme: light;
 
-  --page: #f4f3ef;
-  --surface-1: #fdfcf9;
-  --surface-2: #eeece6;
-  --surface-3: #e3e0d8;
-  --overlay: rgba(18, 19, 26, 0.34);
+  --page: #f8fafc;
+  --surface-1: #ffffff;
+  --surface-2: #f1f5f9;
+  --surface-3: #e2e8f0;
+  --overlay: rgba(15, 23, 42, 0.34);
 
-  --text-primary: #12131a;
-  --text-secondary: #4a4b57;
-  --text-muted: #82828f;
-  --text-inverse: #fdfcf9;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-inverse: #ffffff;
 
-  --border: rgba(18, 19, 26, 0.1);
-  --border-strong: rgba(18, 19, 26, 0.18);
-  --gridline: #e2e0d8;
-  --axis: #c4c2b8;
+  --border: #e5e7eb;
+  --border-strong: #cbd5e1;
+  --gridline: #eef1f6;
+  --axis: #cbd5e1;
 
   --accent: #4f46e5;
-  --accent-hover: #443bd0;
-  --accent-wash: #e5e2fc;
+  --accent-hover: #4338ca;
+  --accent-wash: #eef0ff;
   --focus-ring: #4f46e5;
 
   --series-1: #4f46e5;
-  --series-2: #e0533d;
+  --series-2: #0ea5e9;
 
-  --good: #0ca30c;
-  --warning: #fab219;
-  --serious: #ec835a;
-  --critical: #d03b3b;
-  --good-text: #006300;
+  --good: #10b981;
+  --warning: #f59e0b;
+  --serious: #f97316;
+  --critical: #ef4444;
+  --good-text: #047857;
+  --good-wash: #e7f9f1;
+  --warning-wash: #fef6e7;
+  --serious-wash: #fff1e7;
+  --critical-wash: #fdeded;
 
-  --font: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
 
-  --r-sm: 4px;
-  --r-md: 6px;
-  --r-lg: 10px;
-  --shadow-pop: 0 4px 12px rgba(11, 11, 11, 0.1), 0 0 0 1px var(--border);
-  --shadow-modal: 0 16px 48px rgba(11, 11, 11, 0.2);
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 16px;
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-pop: 0 12px 32px rgba(15, 23, 42, 0.14), 0 0 0 1px rgba(15, 23, 42, 0.06);
+  --shadow-lift: 0 12px 24px -8px rgba(15, 23, 42, 0.16), 0 4px 8px -2px rgba(15, 23, 42, 0.06);
+  --shadow-modal: 0 24px 64px rgba(15, 23, 42, 0.24);
 
-  --rail: 252px;
-  --topbar: 60px;
+  --rail: 264px;
+  --topbar: 64px;
+  --navy: #0b1220;
+  --navy-soft: #111a2e;
+  --navy-border: rgba(247, 248, 252, 0.08);
 }
 
-/* The media query covers the OS setting; the data-theme scope covers the in-app
- * toggle, which must win in BOTH directions. The :not() guard lets an explicit
- * light stamp beat OS-dark. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --page: #0f1112;
-    --surface-1: #181c1b;
-    --surface-2: #212524;
-    --surface-3: #2b2f2e;
-    --overlay: rgba(0, 0, 0, 0.62);
-    --text-primary: #f7f7fa;
-    --text-secondary: #b9bac4;
-    --text-muted: #85868f;
-    --text-inverse: #12131a;
-    --border: rgba(247, 247, 250, 0.11);
-    --border-strong: rgba(247, 247, 250, 0.2);
-    --gridline: #2b2f2e;
-    --axis: #3a3e3d;
-    --accent: #7d74e4;
-    --accent-hover: #948cec;
-    --accent-wash: #2f2a66;
-    --focus-ring: #948cec;
-    --series-1: #7d74e4;
-    --series-2: #dd6a50;
-    --good-text: #0ca30c;
-    --shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--border);
-    --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.6);
+    --page: #0b1220;
+    --surface-1: #111a2e;
+    --surface-2: #16213a;
+    --surface-3: #1d2a45;
+    --overlay: rgba(0, 0, 0, 0.6);
+    --text-primary: #f1f5f9;
+    --text-secondary: #a8b3c7;
+    --text-muted: #64748b;
+    --text-inverse: #0b1220;
+    --border: rgba(247, 248, 252, 0.1);
+    --border-strong: rgba(247, 248, 252, 0.18);
+    --gridline: #1d2a45;
+    --axis: #33415c;
+    --accent: #746bf1;
+    --accent-hover: #8880f4;
+    --accent-wash: rgba(116, 107, 241, 0.16);
+    --focus-ring: #8880f4;
+    --series-1: #746bf1;
+    --series-2: #38bdf8;
+    --good: #34d399;
+    --warning: #fbbf24;
+    --serious: #fb923c;
+    --critical: #f87171;
+    --good-text: #34d399;
+    --good-wash: rgba(52, 211, 153, 0.14);
+    --warning-wash: rgba(251, 191, 36, 0.14);
+    --serious-wash: rgba(251, 146, 60, 0.14);
+    --critical-wash: rgba(248, 113, 113, 0.14);
+    --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.24);
+    --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(247, 248, 252, 0.08);
+    --shadow-lift: 0 12px 24px -8px rgba(0, 0, 0, 0.5), 0 4px 8px -2px rgba(0, 0, 0, 0.3);
+    --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.6);
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-    --page: #0f1112;
-  --surface-1: #181c1b;
-  --surface-2: #212524;
-  --surface-3: #2b2f2e;
-  --overlay: rgba(0, 0, 0, 0.62);
-  --text-primary: #f7f7fa;
-  --text-secondary: #b9bac4;
-  --text-muted: #85868f;
-  --text-inverse: #12131a;
-  --border: rgba(247, 247, 250, 0.11);
-  --border-strong: rgba(247, 247, 250, 0.2);
-  --gridline: #2b2f2e;
-  --axis: #3a3e3d;
-  --accent: #7d74e4;
-  --accent-hover: #948cec;
-  --accent-wash: #2f2a66;
-  --focus-ring: #948cec;
-  --series-1: #7d74e4;
-  --series-2: #dd6a50;
-  --good-text: #0ca30c;
-  --shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px var(--border);
-  --shadow-modal: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --page: #0b1220;
+  --surface-1: #111a2e;
+  --surface-2: #16213a;
+  --surface-3: #1d2a45;
+  --overlay: rgba(0, 0, 0, 0.6);
+  --text-primary: #f1f5f9;
+  --text-secondary: #a8b3c7;
+  --text-muted: #64748b;
+  --text-inverse: #0b1220;
+  --border: rgba(247, 248, 252, 0.1);
+  --border-strong: rgba(247, 248, 252, 0.18);
+  --gridline: #1d2a45;
+  --axis: #33415c;
+  --accent: #746bf1;
+  --accent-hover: #8880f4;
+  --accent-wash: rgba(116, 107, 241, 0.16);
+  --focus-ring: #8880f4;
+  --series-1: #746bf1;
+  --series-2: #38bdf8;
+  --good: #34d399;
+  --warning: #fbbf24;
+  --serious: #fb923c;
+  --critical: #f87171;
+  --good-text: #34d399;
+  --good-wash: rgba(52, 211, 153, 0.14);
+  --warning-wash: rgba(251, 191, 36, 0.14);
+  --serious-wash: rgba(251, 146, 60, 0.14);
+  --critical-wash: rgba(248, 113, 113, 0.14);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(247, 248, 252, 0.08);
+  --shadow-lift: 0 12px 24px -8px rgba(0, 0, 0, 0.5), 0 4px 8px -2px rgba(0, 0, 0, 0.3);
+  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.6);
 }
 
 /* ── Reset ──────────────────────────────────────────────────────────────── */
@@ -159,7 +176,6 @@ textarea {
   color: inherit;
 }
 
-/* Every interactive element gets a visible ring. Never outline:none. */
 :focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
@@ -178,204 +194,221 @@ textarea {
 
 /* ── Typography ─────────────────────────────────────────────────────────── */
 
-.t-page-title {
-  font-size: 24px;
-  font-weight: 600;
-  letter-spacing: -0.015em;
+@layer components {
+  .t-page-title {
+    @apply text-[26px] font-bold tracking-tight;
+  }
+
+  .t-section {
+    @apply text-[11px] font-semibold uppercase tracking-wider;
+    color: var(--text-secondary);
+  }
+
+  .t-meta {
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Buttons ──────────────────────────────────────────────────────────── */
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-control border border-transparent text-[13.5px] font-medium transition-all duration-150 ease-out;
+    height: 36px;
+    padding: 0 14px;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  .btn-primary {
+    @apply text-white shadow-soft;
+    background: linear-gradient(135deg, var(--accent), #7c3aed);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, var(--accent-hover), #6d28d9);
+    @apply shadow-glow;
+  }
+
+  .btn-secondary {
+    color: var(--text-primary);
+    background: var(--surface-1);
+    border-color: var(--border-strong);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--surface-2);
+  }
+
+  .btn-ghost {
+    color: var(--text-secondary);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--surface-2);
+    color: var(--text-primary);
+  }
+
+  .btn-danger {
+    @apply text-white;
+    background: var(--critical);
+  }
+
+  .btn-lg {
+    height: 44px;
+    padding: 0 20px;
+    font-size: 15px;
+  }
+
+  .btn-block {
+    width: 100%;
+  }
+
+  /* ── Inputs ───────────────────────────────────────────────────────────── */
+
+  .field {
+    @apply flex flex-col gap-1.5;
+  }
+
+  .field-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+
+  .input {
+    @apply w-full rounded-control transition-colors duration-150 ease-out;
+    height: 40px;
+    padding: 0 12px;
+    background: var(--surface-1);
+    border: 1px solid var(--border-strong);
+  }
+
+  .input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .input:hover {
+    border-color: var(--text-muted);
+  }
+
+  .input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+
+  .input[aria-invalid='true'] {
+    border-color: var(--critical);
+  }
+
+  .field-error {
+    @apply flex items-center gap-1.5;
+    font-size: 13px;
+    color: var(--critical);
+  }
+
+  /* ── Surfaces ─────────────────────────────────────────────────────────── */
+
+  .card {
+    @apply rounded-card;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-card);
+  }
+
+  .hairline {
+    border: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── Status chip — tint + dot, never colour alone ────────────────────── */
+
+  .pill {
+    @apply inline-flex items-center gap-1.5 whitespace-nowrap rounded-full font-medium;
+    height: 24px;
+    padding: 0 10px 0 8px;
+    font-size: 12px;
+    background: var(--surface-2);
+    color: var(--text-secondary);
+  }
+
+  .pill::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--dot, var(--text-muted));
+    flex: none;
+  }
+
 }
 
-.t-section {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
-}
-
-.t-meta {
-  font-size: 12.5px;
-  color: var(--text-muted);
-}
-
-/* Every money figure and numeric column. Misaligned digits read as unfinished. */
-.num {
-  font-variant-numeric: tabular-nums;
-}
-
-/* ── Buttons ────────────────────────────────────────────────────────────── */
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 34px;
-  padding: 0 13px;
-  border: 1px solid transparent;
-  border-radius: var(--r-md);
-  background: transparent;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 150ms ease-out, border-color 150ms ease-out;
-}
-
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-primary {
-  background: var(--accent);
-  color: #fff;
-}
-.btn-primary:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.btn-secondary {
-  background: var(--surface-1);
-  border-color: var(--border-strong);
-  color: var(--text-primary);
-}
-.btn-secondary:hover:not(:disabled) {
-  background: var(--surface-2);
-}
-
-.btn-ghost {
-  color: var(--text-secondary);
-}
-.btn-ghost:hover:not(:disabled) {
-  background: var(--surface-2);
-  color: var(--text-primary);
-}
-
-.btn-danger {
-  background: var(--critical);
-  color: #fff;
-}
-
-.btn-lg {
-  height: 42px;
-  padding: 0 18px;
-  font-size: 15px;
-}
-
-.btn-block {
-  width: 100%;
-}
-
-/* ── Inputs ─────────────────────────────────────────────────────────────── */
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.field-label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.input {
-  height: 40px;
-  padding: 0 12px;
-  background: var(--surface-1);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--r-md);
-  transition: border-color 150ms ease-out;
-  width: 100%;
-}
-
-.input::placeholder {
-  color: var(--text-muted);
-}
-
-.input:hover {
-  border-color: var(--text-muted);
-}
-
-.input:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
-}
-
-.input[aria-invalid='true'] {
-  border-color: var(--critical);
-}
-
-.field-error {
-  font-size: 13px;
-  color: var(--critical);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-/* ── Surfaces ───────────────────────────────────────────────────────────── */
-
-.card {
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-}
-
-.hairline {
-  border: 0;
-  border-top: 1px solid var(--border);
-}
-
-/* ── Status pill — dot + label, never colour alone ──────────────────────── */
-
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 9px 0 8px;
-  border-radius: 12px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  font-size: 12.5px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.pill::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--dot, var(--text-muted));
-  flex: none;
-}
-
+/* These five live OUTSIDE @layer components deliberately — inside the layer, Tailwind's
+ * build silently dropped this exact block (verified against the compiled CSSOM: the
+ * layered .pill-good/.pill-warning/.pill-serious/.pill-critical rules never made it to
+ * the browser, leaving every pill gray regardless of tone). Unlayered rules are also
+ * always highest-priority in the cascade, which is what we want here anyway. */
 .pill-good {
   --dot: var(--good);
+  background: var(--good-wash);
+  color: var(--good-text);
 }
 .pill-warning {
   --dot: var(--warning);
+  background: var(--warning-wash);
+  color: #92650c;
 }
 .pill-serious {
   --dot: var(--serious);
+  background: var(--serious-wash);
+  color: #9a3f12;
 }
 .pill-critical {
   --dot: var(--critical);
+  background: var(--critical-wash);
+  color: #b42323;
 }
 .pill-neutral {
   --dot: var(--text-muted);
 }
 
+:root[data-theme='dark'] .pill-good {
+  color: var(--good-text);
+}
+:root[data-theme='dark'] .pill-warning {
+  color: #fcd34d;
+}
+:root[data-theme='dark'] .pill-serious {
+  color: #fdba74;
+}
+:root[data-theme='dark'] .pill-critical {
+  color: #fca5a5;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .pill-warning {
+    color: #fcd34d;
+  }
+  :root:not([data-theme='light']) .pill-serious {
+    color: #fdba74;
+  }
+  :root:not([data-theme='light']) .pill-critical {
+    color: #fca5a5;
+  }
+}
+
 /* ── Utility ────────────────────────────────────────────────────────────── */
 
-.row {
-  display: flex;
-  align-items: center;
-}
+/* Unlayered (like .pill-* above) for the opposite reason .row/.stack below are
+ * layered: Tailwind ships its own gap-4/8/12/16/24 utilities on a 0.25rem-per-step
+ * scale (gap-16 = 4rem = 64px), so a same-named rule in @layer components always lost
+ * to it — every "gap-16" on the page was silently rendering as 64px instead of the
+ * 16px these tokens intend. Unlayered CSS always outranks layered CSS, which is what
+ * we want here so our pixel scale wins regardless of class order. */
 .gap-4 {
   gap: 4px;
 }
@@ -391,41 +424,41 @@ textarea {
 .gap-24 {
   gap: 24px;
 }
-.grow {
-  flex: 1;
-}
-.stack {
-  display: flex;
-  flex-direction: column;
-}
-.center {
-  display: grid;
-  place-items: center;
-}
 
-/* Wide content scrolls inside its own container — the page body must never
- * scroll horizontally. */
-.scroll-x {
-  overflow-x: auto;
-  max-width: 100%;
-}
-
-@keyframes sanctio-shimmer {
-  0% {
-    background-position: 100% 50%;
+/* Layered (unlike .pill-* and .gap-* above) so Tailwind utilities in @layer utilities
+ * — e.g. "row items-stretch" — can win the cascade instead of losing to align-items:
+ * center here regardless of class order. Unlayered CSS always outranks layered CSS,
+ * which previously made "items-stretch" a no-op wherever it followed "row" or "stack". */
+@layer components {
+  .row {
+    display: flex;
+    align-items: center;
   }
-  100% {
-    background-position: 0 50%;
+  .grow {
+    flex: 1;
   }
-}
+  .stack {
+    display: flex;
+    flex-direction: column;
+  }
+  .center {
+    display: grid;
+    place-items: center;
+  }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+  .scroll-x {
+    overflow-x: auto;
+    max-width: 100%;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
 }
