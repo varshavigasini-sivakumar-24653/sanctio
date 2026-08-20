@@ -10,7 +10,7 @@
 // three OAuth values. Run scripts/verify-dataset.mjs first — it needs no portal and
 // catches inconsistent numbers before they are written anywhere.
 
-import { api, PORTAL_ID } from './zoho.mjs';
+import { api, unwrap, PORTAL_ID } from './zoho.mjs';
 import { DATASET, STAGE_SLA, STAGES } from './dataset.mjs';
 
 const log = (...a) => console.log(...a);
@@ -30,7 +30,7 @@ async function resolveRecordPath() {
   const tried = [];
   for (const build of CANDIDATES) {
     try {
-      await api('GET', `${build('borrower')}?per_page=1`);
+      await api('GET', `${build('borrower')}?page=1&per_page=1`);
       recordPath = build;
       log(`records endpoint: ${build('<module>')}`);
       return recordPath;
@@ -46,9 +46,9 @@ async function resolveRecordPath() {
 const maps = new Map();
 async function fieldMap(moduleApi) {
   if (maps.has(moduleApi)) return maps.get(moduleApi);
-  const res = await api('GET', `${P}/settings/fields?module=${moduleApi}&per_page=200`);
+  const res = await api('GET', `${P}/settings/fields?module=${moduleApi}&page=1&per_page=200`);
   const m = new Map();
-  for (const f of res.data?.result || []) m.set(f.display_name, f.field_name);
+  for (const f of unwrap(res)) m.set(f.display_name, f.field_name);
   maps.set(moduleApi, m);
   return m;
 }
@@ -82,9 +82,9 @@ async function existingTitles(moduleApi) {
   const seen = new Set();
   let page = 1;
   for (;;) {
-    const res = await api('GET', `${build(moduleApi)}?per_page=200&page=${page}`);
-    const rows = res.data?.result || res.data || [];
-    if (!Array.isArray(rows) || rows.length === 0) break;
+    const res = await api('GET', `${build(moduleApi)}?page=${page}&per_page=200`);
+    const rows = unwrap(res);
+    if (rows.length === 0) break;
     for (const r of rows) seen.add(r.name);
     if (rows.length < 200) break;
     page++;
@@ -155,7 +155,7 @@ const ownerZpuid =
   me?.data?.result?.[0]?.zpuid || me?.data?.zpuid || process.env.ZOHO_OWNER_ZPUID || '60083674144';
 
 const existingProjects = new Set(
-  ((await api('GET', `${P}/projects?per_page=200`)).data?.result || []).map((p) => p.name),
+  unwrap(await api('GET', `${P}/projects?page=1&per_page=200`)).map((p) => p.name),
 );
 
 let projectsMade = 0;

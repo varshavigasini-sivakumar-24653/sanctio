@@ -113,4 +113,20 @@ export async function pool(items, limit, fn) {
   return out;
 }
 
+/**
+ * Pull the row array out of a response.
+ *
+ * The REST API is not consistent: /portals and /projects return a BARE ARRAY, while
+ * other endpoints wrap in {data:{result:[...]}} — and the MCP server wraps everything.
+ * Code written against one shape silently sees zero rows against the other, which
+ * looks like "no data" rather than a parsing bug. Always go through this.
+ */
+export function unwrap(res) {
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res?.data?.result)) return res.data.result;
+  if (Array.isArray(res?.data)) return res.data;
+  if (Array.isArray(res?.result)) return res.result;
+  return [];
+}
+
 export const ymd = (d) => d.toISOString().slice(0, 10);

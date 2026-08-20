@@ -87,3 +87,70 @@ every list query must filter on it, or it returns the entire loan book.
 
 We chose portal-level deliberately (borrowers outlive individual loan files). Worth deciding before
 writing a single field, not after.
+
+---
+
+## 5. A missing OAuth scope reports as `URL_RULE_NOT_CONFIGURED`, not 401
+
+**Cost: ~40 minutes**, most of it spent brute-forcing URL paths that were correct all along.
+
+A self-client token without the custom-module scopes produces two *different* symptoms
+for the same cause:
+
+| Endpoint | Response |
+|---|---|
+| `/settings/modules`, `/settings/fields`, `/settings/layouts` | `401 INVALID_OAUTHSCOPE` — honest |
+| `/modules/{module}/records` and every variant | `400 URL_RULE_NOT_CONFIGURED` / *"Given URL is wrong"* |
+
+The second message is actively misleading. It says the path is wrong, so we went and
+enumerated a dozen path shapes — `/modules/{m}/records`, `/{m}/records`, `/{m}`,
+module-id forms, project-scoped forms — all returning the same "wrong URL".
+
+**The path was never wrong.** Proof: the same portal, same module, reached through the
+Zoho Projects MCP server (which holds a full scope set) returns `200` with an empty
+result. The route exists; the gateway simply does not expose it to a token whose scopes
+don't cover it, and reports the closed route as a bad URL.
+
+**Lesson:** if a Zoho v3 path 400s with `URL_RULE_NOT_CONFIGURED` while a neighbouring
+path on the same portal works, suspect scopes before you suspect the path.
+
+### Also: two documented-looking scope names silently do not exist
+
+We requested ten scopes. The token came back with eight. `ZohoProjects.settings.ALL` and
+`ZohoProjects.customentity.ALL` were **dropped without any error** — the grant succeeds,
+and you discover the gap only when an endpoint fails. Always print the `scope` field of
+the token-refresh response and compare it against what you asked for:
+
+```
+"scope": "ZohoProjects.portals.READ ZohoProjects.projects.ALL ..."
+```
+
+Silent partial grants mean "the token works" is not the same as "the token works for
+what you need".
+
+---
+
+## 6. `page` is mandatory on v3 list endpoints, and omitting it is a 400
+
+`GET /portal/{id}/issues?per_page=2` returns:
+
+```
+400 LESS_THAN_MIN_OCCURANCE  field_name: "page"  "Input Parameter Missing"
+```
+
+`per_page` alone is not enough. Every list call needs `page=1&per_page=N`. At least this
+error names the offending field, which puts it well ahead of the rest of this list.
+
+---
+
+## 7. The REST API and the MCP server return different response shapes
+
+`/portals` and `/projects` return a **bare JSON array**. Other endpoints wrap in
+`{data:{result:[...]}}`. The MCP server wraps *everything*.
+
+So code developed against MCP responses reads `res.data.result`, gets `undefined` from
+the raw REST endpoint, and renders an empty list — which looks like "there is no data"
+rather than "the parsing is wrong". We hit exactly this and it cost real time before
+someone noticed `/portals` had returned 200 with content.
+
+Fix: one tolerant `unwrap()` helper that accepts every shape, used on every list read.

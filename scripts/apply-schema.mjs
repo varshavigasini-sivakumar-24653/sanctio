@@ -3,14 +3,15 @@
 // Idempotent: reads existing fields first and skips anything already present, so it is
 // safe to re-run after a partial failure. Run with:  node scripts/apply-schema.mjs
 
-import { api, pool } from './zoho.mjs';
+import { api, unwrap } from './zoho.mjs';
 import { MODULES } from './schema.mjs';
 
 const log = (...a) => console.log(...a);
 
 async function layoutFor(moduleApi) {
-  const list = await api('GET', `{portal}/settings/layouts?module=${moduleApi}`);
-  const layout = (list.data?.result || []).find((l) => l.is_default) || list.data?.result?.[0];
+  const list = await api('GET', `{portal}/settings/layouts?module=${moduleApi}&page=1&per_page=50`);
+  const rows = unwrap(list);
+  const layout = rows.find((l) => l.is_default) || rows[0];
   if (!layout) throw new Error(`No layout found for ${moduleApi}`);
 
   const detail = await api(
@@ -21,9 +22,9 @@ async function layoutFor(moduleApi) {
 }
 
 async function existingFields(moduleApi) {
-  const res = await api('GET', `{portal}/settings/fields?module=${moduleApi}&per_page=200`);
+  const res = await api('GET', `{portal}/settings/fields?module=${moduleApi}&page=1&per_page=200`);
   const map = new Map();
-  for (const f of res.data?.result || []) map.set(f.display_name, f);
+  for (const f of unwrap(res)) map.set(f.display_name, f);
   return map;
 }
 

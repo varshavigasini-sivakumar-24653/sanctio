@@ -82,6 +82,20 @@ async function zoho(method, path, body) {
   return json;
 }
 
+/**
+ * Pull the row array out of a response. The REST API returns a bare array from
+ * /portals and /projects but wraps other endpoints in {data:{result:[...]}}. Code
+ * written against one shape sees zero rows from the other and reads as "no data"
+ * rather than as a bug, so every list read goes through here.
+ */
+function unwrap(res) {
+  if (Array.isArray(res)) return res;
+  if (Array.isArray(res?.data?.result)) return res.data.result;
+  if (Array.isArray(res?.data)) return res.data;
+  if (Array.isArray(res?.result)) return res.result;
+  return [];
+}
+
 /* ── Records path resolution ──────────────────────────────────────────────────
  *
  * The custom-module record endpoint is not stated in the MCP tool metadata, and
@@ -101,7 +115,7 @@ async function resolveRecordPath() {
   if (recordPath) return recordPath;
   const attempts = [];
   for (const build of RECORD_PATH_CANDIDATES) {
-    const path = `${build('borrower')}?per_page=1`;
+    const path = `${build('borrower')}?page=1&per_page=1`;
     try {
       await zoho('GET', path);
       recordPath = build;
@@ -120,10 +134,10 @@ const fieldMaps = new Map(); // module -> { byLabel, byApi }
 
 async function fields(moduleApi) {
   if (fieldMaps.has(moduleApi)) return fieldMaps.get(moduleApi);
-  const res = await zoho('GET', `/portal/${PORTAL}/settings/fields?module=${moduleApi}&per_page=200`);
+  const res = await zoho('GET', `/portal/${PORTAL}/settings/fields?module=${moduleApi}&page=1&per_page=200`);
   const byLabel = new Map();
   const byApi = new Map();
-  for (const f of res.data?.result || []) {
+  for (const f of unwrap(res)) {
     byLabel.set(f.display_name, f.field_name);
     byApi.set(f.field_name, f.display_name);
   }
@@ -152,9 +166,9 @@ async function records(moduleApi, loanReference) {
   // Paginate — the portal caps per_page at 200 and a portal-level module holds the
   // whole book, not one file's worth.
   for (;;) {
-    const res = await zoho('GET', `${build(moduleApi)}?per_page=200&page=${page}`);
-    const batch = res.data?.result || res.data || [];
-    if (!Array.isArray(batch) || batch.length === 0) break;
+    const res = await zoho('GET', `${build(moduleApi)}?page=${page}&per_page=200`);
+    const batch = unwrap(res);
+    if (batch.length === 0) break;
     all.push(...batch);
     if (batch.length < 200) break;
     page++;
@@ -171,8 +185,10 @@ const num = (v) => (v == null || v === '' ? null : Number(v));
 const daysSince = (d) => (d ? Math.floor((Date.now() - new Date(d)) / 86400000) : null);
 
 async function loanProjects() {
-  const res = await zoho('GET', `/portal/${PORTAL}/projects?per_page=200`);
-  const list = res.data?.result || res.data || [];
+  // page is REQUIRED on v3 list endpoints — omitting it returns
+  // 400 LESS_THAN_MIN_OCCURANCE with field_name "page", not a helpful message.
+  const res = await zoho('GET', `/portal/${PORTAL}/projects?page=1&per_page=200`);
+  const list = unwrap(res);
   const { byApi } = await fields('projects');
 
   return list.map((p) => {
@@ -328,8 +344,8 @@ async function concentration() {
 }
 
 async function deviations() {
-  const res = await zoho('GET', `/portal/${PORTAL}/issues?per_page=100`).catch(() => null);
-  const list = res?.data?.result || [];
+  const res = await zoho('GET', `/portal/${PORTAL}/issues?page=1&per_page=100`).catch(() => null);
+  const list = unwrap(res);
   return {
     deviations: list.map((i) => ({
       id: String(i.id),
