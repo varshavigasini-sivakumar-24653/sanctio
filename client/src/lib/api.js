@@ -72,6 +72,8 @@ export const api = {
   pipeline: () => request('GET', '/pipeline'),
   loanFile: (ref) => request('GET', `/loans/${encodeURIComponent(ref)}`),
   dashboard: () => request('GET', '/dashboard'),
+  attention: () => request('GET', '/attention'),
+  concentration: () => request('GET', '/concentration'),
   borrowers: () => request('GET', '/borrowers'),
   deviations: () => request('GET', '/deviations'),
 

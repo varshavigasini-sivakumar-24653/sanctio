@@ -15,6 +15,8 @@
 //     `Loan Reference` string and every list query MUST filter on it. An unfiltered
 //     query returns the entire loan book — see SPEC.md §6.
 
+const { rankAttention, computeConcentration } = require('./analytics');
+
 const ACCOUNTS = process.env.ZOHO_ACCOUNTS_HOST || 'https://accounts.zoho.in';
 const API = process.env.ZOHO_API_BASE || 'https://projects.zoho.in/api/v3';
 const PORTAL = process.env.ZOHO_PORTAL_ID || '60083699064';
@@ -305,6 +307,26 @@ async function dashboard() {
   };
 }
 
+/* ── Needs attention / concentration ───────────────────────────────────────────
+ *
+ * Fetch, then delegate to the pure functions in analytics.js. Keeping the maths out
+ * of the I/O layer is what makes it testable without a portal or a token. */
+
+async function attention() {
+  const [loans, conditions, tranches, devs] = await Promise.all([
+    loanProjects(),
+    records('sanction_condition'),
+    records('disbursement_tranche'),
+    deviations().then((d) => d.deviations).catch(() => []),
+  ]);
+  return rankAttention({ loans, conditions, tranches, deviations: devs });
+}
+
+async function concentration() {
+  const [loans, borrowers] = await Promise.all([loanProjects(), records('borrower')]);
+  return computeConcentration({ loans, borrowers });
+}
+
 async function deviations() {
   const res = await zoho('GET', `/portal/${PORTAL}/issues?per_page=100`).catch(() => null);
   const list = res?.data?.result || [];
@@ -357,6 +379,8 @@ module.exports = {
   pipeline,
   loanFile,
   dashboard,
+  attention,
+  concentration,
   deviations,
   records,
   transition,

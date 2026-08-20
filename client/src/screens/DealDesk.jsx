@@ -1,6 +1,7 @@
 import { api } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
 import { ErrorState, Money, Pill, Skeleton, StatTile } from '../components/ui';
+import Concentration from '../components/Concentration';
 import { days, money } from '../lib/format';
 
 /* Charts are hand-rolled SVG rather than a charting library: it keeps the bundle
@@ -243,6 +244,10 @@ export default function DealDesk() {
           )}
         </Panel>
       </div>
+
+      <hr className="hairline" style={{ margin: '8px 0' }} />
+
+      <Concentration />
     </div>
   );
 }

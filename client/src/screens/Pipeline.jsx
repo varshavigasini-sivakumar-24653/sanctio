@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
 import { EmptyState, ErrorState, Money, Pill, Skeleton, Avatar } from '../components/ui';
+import AttentionFeed from '../components/AttentionFeed';
 import { SLA_LABEL, date, days, slaState } from '../lib/format';
 
 const STAGES = [
@@ -103,6 +104,8 @@ export default function Pipeline() {
           </span>
         </div>
       </div>
+
+      <AttentionFeed />
 
       {loading && (
         <div className="row gap-16 scroll-x" style={{ alignItems: 'flex-start' }}>

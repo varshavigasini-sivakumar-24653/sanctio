@@ -85,6 +85,22 @@ app.get('/api/dashboard', requireSession, async (_req, res, next) => {
   }
 });
 
+app.get('/api/attention', requireSession, async (_req, res, next) => {
+  try {
+    res.json(await projects.attention());
+  } catch (e) {
+    next(e);
+  }
+});
+
+app.get('/api/concentration', requireSession, async (_req, res, next) => {
+  try {
+    res.json(await projects.concentration());
+  } catch (e) {
+    next(e);
+  }
+});
+
 app.get('/api/borrowers', requireSession, async (_req, res, next) => {
   try {
     res.json(await projects.records('borrower'));
