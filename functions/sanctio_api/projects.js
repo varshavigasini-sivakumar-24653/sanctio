@@ -128,20 +128,66 @@ async function resolveRecordPath() {
   throw new Error(`Could not resolve the records endpoint. Tried:\n${attempts.join('\n')}`);
 }
 
-/* ── Field metadata ─────────────────────────────────────────────────────────── */
+/* ── Field metadata ───────────────────────────────────────────────────────────
+ *
+ * Preferred source is /settings/fields, which returns the authoritative derived
+ * api_name for every field. But that endpoint needs a scope a self-client token may
+ * not have (BROKE.md #5), and without a map every record renders blank.
+ *
+ * So: try the live lookup, and fall back to these known names — captured from the
+ * create-field responses when the schema was built through the MCP. The fallback is a
+ * degraded mode, not the design: it cannot see fields added later, so it logs loudly
+ * rather than failing silently. */
+const FALLBACK_FIELDS = {
+  projects: {
+    loan_reference: 'Loan Reference',
+    borrower_name: 'Borrower Name',
+    loan_product: 'Loan Product',
+    sector: 'Sector',
+    current_stage: 'Current Stage',
+    workflow_state: 'Workflow State',
+    internal_rating: 'Internal Rating',
+    total_requested_cr: 'Total Requested Cr',
+    total_sanctioned_cr: 'Total Sanctioned Cr',
+    stage_entered_on: 'Stage Entered On',
+    stage_sla_days: 'Stage SLA Days',
+    sla_breached: 'SLA Breached',
+  },
+};
 
-const fieldMaps = new Map(); // module -> { byLabel, byApi }
+const fieldMaps = new Map(); // module -> { byLabel, byApi, degraded }
 
 async function fields(moduleApi) {
   if (fieldMaps.has(moduleApi)) return fieldMaps.get(moduleApi);
-  const res = await zoho('GET', `/portal/${PORTAL}/settings/fields?module=${moduleApi}&page=1&per_page=200`);
+
   const byLabel = new Map();
   const byApi = new Map();
-  for (const f of unwrap(res)) {
-    byLabel.set(f.display_name, f.field_name);
-    byApi.set(f.field_name, f.display_name);
+  let degraded = false;
+
+  try {
+    const res = await zoho(
+      'GET',
+      `/portal/${PORTAL}/settings/fields?module=${moduleApi}&page=1&per_page=200`,
+    );
+    for (const f of unwrap(res)) {
+      byLabel.set(f.display_name, f.field_name);
+      byApi.set(f.field_name, f.display_name);
+    }
+  } catch (e) {
+    const fb = FALLBACK_FIELDS[moduleApi];
+    if (!fb) throw e;
+    degraded = true;
+    console.warn(
+      `field metadata unavailable for "${moduleApi}" (${e.status || e.message}) — ` +
+        `using the built-in fallback map. Fields added since will not appear.`,
+    );
+    for (const [api, label] of Object.entries(fb)) {
+      byApi.set(api, label);
+      byLabel.set(label, api);
+    }
   }
-  const map = { byLabel, byApi };
+
+  const map = { byLabel, byApi, degraded };
   fieldMaps.set(moduleApi, map);
   return map;
 }
@@ -191,7 +237,15 @@ async function loanProjects() {
   const list = unwrap(res);
   const { byApi } = await fields('projects');
 
-  return list.map((p) => {
+  // A Project without a Loan Reference is not a loan file — the portal may hold
+  // ordinary projects alongside ours, and counting them inflates every figure on the
+  // dashboard. Filter on the field that defines the entity, not on a name convention.
+  return list
+    .filter((p) => {
+      const refApi = byApi.has('loan_reference') ? 'loan_reference' : null;
+      return refApi ? Boolean(p[refApi]) : true;
+    })
+    .map((p) => {
     const custom = {};
     for (const [api, value] of Object.entries(p)) {
       const label = byApi.get(api);
@@ -218,7 +272,7 @@ async function loanProjects() {
       daysOver: slaDays && daysInStage ? Math.max(daysInStage - slaDays, 0) : 0,
       owner: p.owner?.full_name || p.owner_name || null,
     };
-  });
+    });
 }
 
 async function pipeline() {
@@ -329,18 +383,47 @@ async function dashboard() {
  * of the I/O layer is what makes it testable without a portal or a token. */
 
 async function attention() {
-  const [loans, conditions, tranches, devs] = await Promise.all([
-    loanProjects(),
-    records('sanction_condition'),
-    records('disbursement_tranche'),
-    deviations().then((d) => d.deviations).catch(() => []),
+  // SLA items come from Projects, which is always readable. Covenants and tranches
+  // come from custom modules that may be scope-blocked (BROKE.md #5) — in that case
+  // show the SLA items rather than an empty feed, and report which sources were
+  // unavailable so the UI can say so instead of implying all-clear.
+  const loans = await loanProjects();
+  const unavailable = [];
+
+  const soft = async (label, fn) => {
+    try {
+      return await fn();
+    } catch (e) {
+      unavailable.push(label);
+      console.warn(`attention: ${label} unavailable (${e.status || e.message})`);
+      return [];
+    }
+  };
+
+  const [conditions, tranches, devs] = await Promise.all([
+    soft('covenants', () => records('sanction_condition')),
+    soft('tranches', () => records('disbursement_tranche')),
+    soft('deviations', () => deviations().then((d) => d.deviations)),
   ]);
-  return rankAttention({ loans, conditions, tranches, deviations: devs });
+
+  return { ...rankAttention({ loans, conditions, tranches, deviations: devs }), unavailable };
 }
 
 async function concentration() {
-  const [loans, borrowers] = await Promise.all([loanProjects(), records('borrower')]);
-  return computeConcentration({ loans, borrowers });
+  // Borrower records supply the group mapping. If that module is unreadable (scope —
+  // BROKE.md #5) the sector, grade and sub-investment-grade views are still perfectly
+  // valid, so degrade to per-borrower grouping rather than failing the whole panel.
+  // Losing group rollup is a real loss of signal, so say so in the response.
+  const loans = await loanProjects();
+  let borrowers = [];
+  let groupRollup = true;
+  try {
+    borrowers = await records('borrower');
+  } catch (e) {
+    groupRollup = false;
+    console.warn(`borrower records unreadable (${e.status || e.message}) — group rollup disabled`);
+  }
+  return { ...computeConcentration({ loans, borrowers }), groupRollup };
 }
 
 async function deviations() {
