@@ -171,6 +171,10 @@ export default function Login() {
                   className="card row gap-12"
                   onClick={() => useRole(role)}
                   disabled={busy !== null}
+                  /* Without this the accessible name is the concatenated child text —
+                   * "Relationship ManagerOriginates loan files, maintains borrowers…".
+                   * Screen readers announce the run-together string. */
+                  aria-label={`Sign in as ${role.title}, ${role.name}`}
                   style={{
                     padding: 12,
                     textAlign: 'left',
