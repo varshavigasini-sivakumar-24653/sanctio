@@ -84,6 +84,6 @@ export const api = {
     request('POST', `/loans/${encodeURIComponent(ref)}/transition`, { transition, note }),
   decideDeviation: (id, decision, note) =>
     request('POST', `/deviations/${id}/decide`, { decision, note }),
-  verifyCondition: (id, body) => request('POST', `/conditions/${id}/verify`, body),
-  releaseTranche: (id) => request('POST', `/tranches/${id}/release`),
+  verifyCondition: (id, ref, body) => request('POST', `/conditions/${id}/verify`, { ...body, ref }),
+  releaseTranche: (id, ref) => request('POST', `/tranches/${id}/release`, { ref }),
 };

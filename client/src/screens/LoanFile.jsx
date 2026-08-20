@@ -5,6 +5,7 @@ import { useAsync } from '../lib/useAsync';
 import { Avatar, EmptyState, ErrorState, Money, Pill, Skeleton } from '../components/ui';
 import { SLA_LABEL, date, days, pct, ratio, slaState } from '../lib/format';
 import { useAuth } from '../lib/providers';
+import { toneFor } from '../lib/modules';
 
 const STAGES = [
   'Origination and Lead Capture',
@@ -204,7 +205,7 @@ export default function LoanFile() {
                 }
               />
             ) : (
-              <TabBody tab={tab} rows={byTab[tab]} can={can} onChange={reload} />
+              <TabBody tab={tab} rows={byTab[tab]} can={can} onChange={reload} loanRef={loan.loanReference} />
             )}
           </div>
         </div>
@@ -213,7 +214,7 @@ export default function LoanFile() {
   );
 }
 
-function TabBody({ tab, rows, can, onChange }) {
+function TabBody({ tab, rows, can, onChange, loanRef }) {
   if (tab === 'Conditions') {
     return (
       <div className="stack gap-8">
@@ -243,7 +244,7 @@ function TabBody({ tab, rows, can, onChange }) {
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => api.verifyCondition(c.id, { status: 'Complied' }).then(onChange)}
+                onClick={() => api.verifyCondition(c.id, loanRef, { status: 'Complied' }).then(onChange)}
               >
                 Mark complied
               </button>
@@ -284,7 +285,17 @@ function TabBody({ tab, rows, can, onChange }) {
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={() => api.releaseTranche(t.id).then(onChange).catch(onChange)}
+                onClick={() =>
+                  api
+                    .releaseTranche(t.id, loanRef)
+                    .then(onChange)
+                    .catch((e) => {
+                      // A blocked release is a business outcome, not a bug — say why
+                      // rather than silently reloading as if nothing happened.
+                      alert(e.message || 'Could not release this tranche');
+                      onChange();
+                    })
+                }
               >
                 Release
               </button>
@@ -318,7 +329,56 @@ function TabBody({ tab, rows, can, onChange }) {
     );
   }
 
-  // Facilities, Collateral, Audit trail — generic key/value rendering.
+  if (tab === 'Facilities') {
+    return (
+      <div className="stack gap-8">
+        {rows.map((f, i) => (
+          <div key={f.id || i} className="row gap-12" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+            <span className="grow">
+              <span style={{ fontWeight: 600, fontSize: 13 }}>{f['Facility Type']}</span>
+              <span className="t-meta" style={{ display: 'block' }}>
+                {f['Borrower Name']}
+                {f['Tenor Months'] ? ` · ${f['Tenor Months']} mo` : ''}
+                {f['All In Rate Pct'] != null ? ` · ${pct(f['All In Rate Pct'])}` : ''}
+              </span>
+            </span>
+            <span className="stack gap-4" style={{ textAlign: 'right' }}>
+              <Money cr={f['Amount Sanctioned Cr'] ?? f['Amount Requested Cr']} bold />
+              {f['Amount Sanctioned Cr'] != null && (
+                <span className="t-meta">of <Money cr={f['Amount Requested Cr']} /> requested</span>
+              )}
+            </span>
+            <Pill tone={toneFor(f['Facility Status'])}>{f['Facility Status']}</Pill>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (tab === 'Collateral') {
+    return (
+      <div className="stack gap-8">
+        {rows.map((c, i) => (
+          <div key={c.id || i} className="row gap-12" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+            <span className="grow">
+              <span style={{ fontWeight: 600, fontSize: 13 }}>{c['Collateral Type']}</span>
+              <span className="t-meta" style={{ display: 'block' }}>
+                Charge: {c['Charge Type']}
+                {c['Charge Registered'] ? ' · registered' : ' · not yet registered'}
+              </span>
+            </span>
+            <span className="stack gap-4" style={{ textAlign: 'right' }}>
+              <Money cr={c['Realizable Value Cr']} bold />
+              {c['LTV Pct'] != null && <span className="t-meta">LTV {pct(c['LTV Pct'])}</span>}
+            </span>
+            <Pill tone={toneFor(c['Legal Opinion'])}>{c['Legal Opinion']}</Pill>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Audit trail — generic key/value rendering; nothing else falls through to this.
   return (
     <div className="stack gap-8">
       {rows.map((r, i) => (

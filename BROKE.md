@@ -253,3 +253,41 @@ the disk cache is enabled only when a cache path is set, so the deployed functio
 touches a filesystem it does not own.
 
 Recovery is simply waiting: it cleared in a little under two minutes.
+
+---
+
+## 11. Zoho also throttles per-endpoint call volume, separate from the token limit
+
+`400 URL_ROLLING_THROTTLES_LIMIT_EXCEEDED — "Cannot execute more than 200 requests per
+API in 2 minutes. Try again after 8 minutes."` — hit on `/tasks` specifically, distinct
+from item 10's token-refresh limit (a different endpoint, a different failure mode, an
+8-minute lockout instead of ~2).
+
+**Cause:** every screen backed by task data (six module tables, the loan file, the
+attention feed, the dashboard, concentration) independently fans out across all 15 loan
+files' task lists. With no cache, clicking through six sidebar tabs in under a minute is
+roughly 90 calls to the same endpoint — comfortably over the 200-per-2-minute ceiling
+once dashboard and attention are added, and a demo walkthrough clicking through the app
+is exactly this pattern.
+
+**Fix:** a 45-second in-memory TTL cache in front of `tasksOf`/`issuesOf`/`phasesOf` and
+`loanProjects` itself. This turns "open six tabs" into one real fetch per project on the
+first tab and zero on the rest, which is both the throttle fix and the right thing for
+latency regardless. 45s is long enough to absorb a normal click-through, short enough
+that a write is visible within one interaction.
+
+**Lesson for the design:** when child data is reachable only by re-deriving it from a
+parent list (here: tasks per project, because there is no cross-project task query),
+that fan-out cost is paid on every screen unless something remembers the answer. Budget
+for this before building six screens on the same underlying fetch, not after tripping
+the limit.
+
+**The documented policy and the live one disagree — trust the live one, design for the
+stricter one.** Zoho's own community help states the policy as *"100 times in a span of
+two minutes... locked for the next 30 minutes"* [(help.zoho.com)](https://help.zoho.com/portal/en/community/topic/zoho-projects-api-100-requests-2-min-limit).
+Our own error was `200 requests / 2 minutes, retry after 8 minutes`. Different count,
+different lockout, presumably different endpoint tier or a since-changed policy — there
+is no way to reconcile this from outside Zoho. Practical takeaway: don't hardcode either
+number into retry logic. Cache aggressively so the limit is rarely approached, back off
+on the specific error rather than a guessed threshold, and treat whatever the live
+response says as more current than any doc.

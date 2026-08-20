@@ -116,19 +116,21 @@ app.get('/api/modules/:module', requireSession, async (req, res, next) => {
   if (!BROWSABLE_MODULES.has(module)) {
     return res.status(404).json({ error: `Unknown module "${module}"` });
   }
+  // All six are Task- or Issue-backed (BROKE.md #8), so all six are readable. Routing
+  // through these rather than records() is what makes every module screen work
+  // instead of half of them showing an explanatory error.
+  const TASK_BACKED = {
+    sanction_condition: projects.allConditions,
+    disbursement_tranche: projects.allTranches,
+    facility: projects.allFacilities,
+    collateral: projects.allCollateral,
+    risk_assessment: projects.allRiskAssessments,
+    borrower: projects.allBorrowers,
+  };
+
   try {
-    // These two are Task-backed, so they are readable where custom-module records
-    // are not. Routing them here rather than through records() is what makes the
-    // difference between a working screen and an explanatory error.
-    if (module === 'sanction_condition') {
-      const rows = await projects.allConditions();
-      return res.json({ module, count: rows.length, rows });
-    }
-    if (module === 'disbursement_tranche') {
-      const rows = await projects.allTranches();
-      return res.json({ module, count: rows.length, rows });
-    }
-    const rows = await projects.records(module, req.query.ref || undefined);
+    const loader = TASK_BACKED[module];
+    const rows = loader ? await loader() : await projects.records(module, req.query.ref || undefined);
     res.json({ module, count: rows.length, rows });
   } catch (e) {
     // Zoho hides routes a token is not scoped for and reports them as a bad URL
@@ -220,7 +222,7 @@ app.post(
   requireCapability('disbursement_tranche'),
   async (req, res, next) => {
     try {
-      const result = await projects.releaseTranche(req.params.id, req.session);
+      const result = await projects.releaseTranche(req.params.id, req.body, req.session);
       // A blocked tranche is a business outcome, not an error — the UI shows the
       // failing condition rather than a generic failure toast.
       res.status(result.blocked ? 409 : 200).json(result);
@@ -254,6 +256,17 @@ app.use((err, _req, res, _next) => {
       error: 'Server is missing its session secret',
       hint: 'Set SESSION_SECRET on this environment.',
       code: 'SESSION_SECRET_MISSING',
+    });
+  }
+
+  // Zoho's per-endpoint throttle (BROKE.md #11) — distinct from every other failure so
+  // the client can say "try again shortly" instead of implying the app is broken.
+  // Genuinely transient: the 45s cache means this should be rare in normal use.
+  if (err.throttled) {
+    return res.status(429).json({
+      error: 'Zoho is temporarily rate-limiting this data',
+      hint: 'This clears on its own within a few minutes. Retry shortly.',
+      code: 'ZOHO_THROTTLED',
     });
   }
 

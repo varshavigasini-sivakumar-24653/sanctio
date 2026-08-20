@@ -117,6 +117,9 @@ async function zoho(method, path, body) {
   if (!res.ok) {
     const err = new Error(`Zoho ${method} ${path} -> ${res.status}: ${text.slice(0, 300)}`);
     err.status = res.status;
+    // Distinct from every other failure mode so callers — and eventually the client —
+    // can say "try again shortly" instead of "something broke". See BROKE.md #11.
+    err.throttled = json?.error?.title === 'URL_ROLLING_THROTTLES_LIMIT_EXCEEDED';
     throw err;
   }
   return json;
@@ -294,11 +297,25 @@ function parseKV(description) {
 const CONDITION_RE = /^\[(Pre-Disbursement|Post-Disbursement|Continuing Covenant)\]\s*(.*)$/;
 const TRANCHE_RE = /^\[Tranche (\d+)\]\s*(\w+)\s*—\s*Rs\s*([\d.]+)\s*Cr/;
 const SEVERITY_RE = /^\[(Critical|Major|Minor)\]\s*(.*)$/;
+const FACILITY_RE = /^\[Facility\]/;
+const COLLATERAL_RE = /^\[Collateral\]/;
+const RISK_RE = /^\[Risk Assessment\]/;
+const BORROWER_RE = /^\[Borrower\]\s*(.+?)\s*\(([^)]+)\)$/;
 
-/** Split a project's tasks into conditions and tranches. */
-function splitTasks(tasks) {
+const numOrNull = (v) => (v == null || v === '' ? null : Number(v));
+const boolFromYN = (v) => /^yes$/i.test(v || '');
+
+/** One pass over a project's tasks, bucketed by the marker tag in the task name.
+ * Every child entity type rides on Tasks (BROKE.md #8), so one fetch per project
+ * serves all six — this is what keeps the portfolio-wide screens from needing six
+ * times the API calls. */
+function splitAllTasks(tasks, loanRef, borrowerNameFallback) {
   const conditions = [];
   const tranches = [];
+  const facilities = [];
+  const collateral = [];
+  const risk = [];
+  const borrowerProfiles = [];  // a project can host more than one (e.g. a group's flagship borrower plus its guarantor)
 
   for (const t of tasks) {
     const name = t.name || '';
@@ -315,7 +332,7 @@ function splitTasks(tasks) {
         dueDate: t.end_date || null,
         complianceStatus: kv.status || 'Open',
         waiverAuthority: kv['waiver authority'] || null,
-        blocksDisbursement: /^yes$/i.test(kv['blocks disbursement'] || ''),
+        blocksDisbursement: boolFromYN(kv['blocks disbursement']),
       });
       continue;
     }
@@ -333,12 +350,99 @@ function splitTasks(tasks) {
         purpose: kv.purpose || null,
         blockedReason: kv.blocked || null,
       });
+      continue;
+    }
+
+    if (FACILITY_RE.test(name)) {
+      facilities.push(parseFacilityTask(t, loanRef, borrowerNameFallback));
+      continue;
+    }
+    if (COLLATERAL_RE.test(name)) {
+      collateral.push(parseCollateralTask(t, loanRef));
+      continue;
+    }
+    if (RISK_RE.test(name)) {
+      risk.push(parseRiskTask(t, loanRef));
+      continue;
+    }
+    if (BORROWER_RE.test(name)) {
+      borrowerProfiles.push(parseBorrowerTask(t, loanRef));
     }
   }
 
   conditions.sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)));
   tranches.sort((a, b) => a.trancheNo - b.trancheNo);
-  return { conditions, tranches };
+  return { conditions, tranches, facilities, collateral, risk, borrowerProfiles };
+}
+
+/** A task is a facility/collateral/risk/borrower row if its name carries the marker
+ * tag; everything else in the project's task list is a condition or a tranche (or
+ * neither). Row objects use the EXACT column keys client/src/lib/modules.js expects,
+ * so ModuleList never needs a translation layer between server and table. */
+
+function parseFacilityTask(t, loanRef, borrowerNameFallback) {
+  const kv = parseKV(t.description);
+  return {
+    id: String(t.id),
+    'Loan Reference': loanRef,
+    'Borrower Name': kv['borrower name'] || borrowerNameFallback || '',
+    'Facility Type': kv['facility type'] || t.name.replace(FACILITY_RE, '').trim(),
+    'Amount Requested Cr': numOrNull(kv['amount requested cr']),
+    'Amount Sanctioned Cr': numOrNull(kv['amount sanctioned cr']),
+    'Tenor Months': numOrNull(kv['tenor months']),
+    'All In Rate Pct': numOrNull(kv['all in rate pct']),
+    'Facility Status': kv['facility status'] || null,
+  };
+}
+
+function parseCollateralTask(t, loanRef) {
+  const kv = parseKV(t.description);
+  return {
+    id: String(t.id),
+    'Loan Reference': loanRef,
+    'Collateral Type': t.name.replace(COLLATERAL_RE, '').trim(),
+    'Market Value Cr': numOrNull(kv['market value cr']),
+    'Realizable Value Cr': numOrNull(kv['realizable value cr']),
+    'LTV Pct': numOrNull(kv['ltv pct']),
+    'Legal Opinion': kv['legal opinion'] || null,
+    'Charge Type': kv['charge type'] || null,
+    'Charge Registered': boolFromYN(kv['charge registered']),
+  };
+}
+
+function parseRiskTask(t, loanRef) {
+  const kv = parseKV(t.description);
+  return {
+    id: String(t.id),
+    'Loan Reference': loanRef,
+    'Assessment Date': kv['assessment date'] || t.end_date || null,
+    'Composite Score': numOrNull(kv['composite score']),
+    'Internal Rating Grade': kv['internal rating grade'] || null,
+    DSCR: numOrNull(kv['dscr']),
+    'Debt to EBITDA': numOrNull(kv['debt to ebitda']),
+    'Probability of Default Pct': numOrNull(kv['probability of default pct']),
+    Recommendation: kv['recommendation'] || null,
+    'Key Risks': kv['key risks'] || null,
+    Mitigants: kv['mitigants'] || null,
+  };
+}
+
+function parseBorrowerTask(t, hostLoanRef) {
+  const m = t.name.match(BORROWER_RE);
+  const kv = parseKV(t.description);
+  return {
+    id: String(t.id),
+    name: m ? m[1] : t.name,
+    hostLoanReference: hostLoanRef,
+    'Entity Role': m ? m[2] : kv['entity role'] || null,
+    Constitution: kv['constitution'] || null,
+    'Industry Sector': kv['industry sector'] || null,
+    'Group Name': kv['group name'] || null,
+    'Internal Rating': kv['internal rating'] || null,
+    'Annual Turnover Cr': numOrNull(kv['annual turnover cr']),
+    'Existing Group Exposure Cr': numOrNull(kv['existing group exposure cr']),
+    'KYC Status': kv['kyc status'] || null,
+  };
 }
 
 function mapIssues(issues, project) {
@@ -357,20 +461,51 @@ function mapIssues(issues, project) {
   });
 }
 
+/* Zoho throttles each endpoint independently: "Cannot execute more than 200
+ * requests per API in 2 minutes" on /tasks specifically (BROKE.md #11). Every screen
+ * that shows task-backed data (6 module tables, the loan file, attention, dashboard,
+ * concentration) fans out to all 15 projects' tasks — clicking through the sidebar
+ * once is ~90 calls with no cache, which trips the throttle inside a minute.
+ *
+ * A short in-memory TTL cache turns "click through 6 tabs" into one real fetch per
+ * project, not six. The TTL is short enough that a write (once real writes exist) is
+ * visible within one interaction, long enough to absorb a normal click-through. */
+const CACHE_TTL_MS = 45_000;
+const cache = new Map();
+
+async function cached(key, fn) {
+  const hit = cache.get(key);
+  if (hit && Date.now() < hit.until) return hit.value;
+  const value = await fn();
+  cache.set(key, { value, until: Date.now() + CACHE_TTL_MS });
+  return value;
+}
+
+function invalidateProject(projectId) {
+  cache.delete(`tasks:${projectId}`);
+  cache.delete(`issues:${projectId}`);
+}
+
 const tasksOf = (projectId) =>
-  zoho('GET', `/portal/${PORTAL}/projects/${projectId}/tasks?page=1&per_page=200`)
-    .then(unwrap)
-    .catch(() => []);
+  cached(`tasks:${projectId}`, () =>
+    zoho('GET', `/portal/${PORTAL}/projects/${projectId}/tasks?page=1&per_page=200`)
+      .then(unwrap)
+      .catch(() => []),
+  );
 
 const issuesOf = (projectId) =>
-  zoho('GET', `/portal/${PORTAL}/projects/${projectId}/issues?page=1&per_page=100`)
-    .then(unwrap)
-    .catch(() => []);
+  cached(`issues:${projectId}`, () =>
+    zoho('GET', `/portal/${PORTAL}/projects/${projectId}/issues?page=1&per_page=100`)
+      .then(unwrap)
+      .catch(() => []),
+  );
 
 const phasesOf = (projectId) =>
-  zoho('GET', `/portal/${PORTAL}/projects/${projectId}/phases?page=1&per_page=100`)
-    .then(unwrap)
-    .catch(() => []);
+  cached(`phases:${projectId}`, () =>
+    zoho('GET', `/portal/${PORTAL}/projects/${projectId}/phases?page=1&per_page=100`)
+      .then(unwrap)
+      .catch(() => []),
+  );
 
 /* ── Projects (loan files) ──────────────────────────────────────────────────── */
 
@@ -378,6 +513,10 @@ const num = (v) => (v == null || v === '' ? null : Number(v));
 const daysSince = (d) => (d ? Math.floor((Date.now() - new Date(d)) / 86400000) : null);
 
 async function loanProjects() {
+  return cached('projects', () => fetchLoanProjects());
+}
+
+async function fetchLoanProjects() {
   // page is REQUIRED on v3 list endpoints — omitting it returns
   // 400 LESS_THAN_MIN_OCCURANCE with field_name "page", not a helpful message.
   const res = await zoho('GET', `/portal/${PORTAL}/projects?page=1&per_page=200`);
@@ -432,17 +571,19 @@ async function loanFile(ref) {
   const loan = loans.find((l) => l.loanReference === ref);
   if (!loan) return null;
 
-  const [tasks, issues, phases, facilities, collateral, risk] = await Promise.all([
+  const [tasks, issues, phases] = await Promise.all([
     tasksOf(loan.projectId),
     issuesOf(loan.projectId),
     phasesOf(loan.projectId),
-    // Custom modules are unreadable with a self-client token; degrade rather than fail.
-    records('facility', ref).catch(() => []),
-    records('collateral', ref).catch(() => []),
-    records('risk_assessment', ref).catch(() => []),
   ]);
 
-  const { conditions, tranches } = splitTasks(tasks);
+  // One pass over this project's tasks serves conditions, tranches, facilities,
+  // collateral and risk — all six child entity types ride on Tasks (BROKE.md #8).
+  const { conditions, tranches, facilities, collateral, risk } = splitAllTasks(
+    tasks,
+    ref,
+    loan.borrowerName,
+  );
 
   // Stage TAT from the phase spans — this is what makes the rail honest rather than
   // decorative, and it comes straight out of Zoho.
@@ -462,11 +603,11 @@ async function loanFile(ref) {
     risk: risk.map((r) => ({
       id: r.id,
       assessmentDate: r['Assessment Date'],
-      compositeScore: num(r['Composite Score']),
+      compositeScore: r['Composite Score'],
       internalRatingGrade: r['Internal Rating Grade'],
-      dscr: num(r['DSCR']),
-      debtToEbitda: num(r['Debt to EBITDA']),
-      probabilityOfDefaultPct: num(r['Probability of Default Pct']),
+      dscr: r['DSCR'],
+      debtToEbitda: r['Debt to EBITDA'],
+      probabilityOfDefaultPct: r['Probability of Default Pct'],
       recommendation: r['Recommendation'],
       keyRisks: r['Key Risks'],
     })),
@@ -555,7 +696,7 @@ async function attention() {
   // complete rather than partial.
   const perLoan = await Promise.all(
     loans.map(async (l) => {
-      const { conditions, tranches } = splitTasks(await tasksOf(l.projectId));
+      const { conditions, tranches } = splitAllTasks(await tasksOf(l.projectId), l.loanReference, l.borrowerName);
       return { l, conditions, tranches };
     }),
   );
@@ -588,20 +729,11 @@ async function attention() {
 }
 
 async function concentration() {
-  // Borrower records supply the group mapping. If that module is unreadable (scope —
-  // BROKE.md #5) the sector, grade and sub-investment-grade views are still perfectly
-  // valid, so degrade to per-borrower grouping rather than failing the whole panel.
-  // Losing group rollup is a real loss of signal, so say so in the response.
+  // Borrower profiles are Task-backed (BROKE.md #8) and therefore always readable, so
+  // group rollup no longer degrades — every borrower's group mapping is real.
   const loans = await loanProjects();
-  let borrowers = [];
-  let groupRollup = true;
-  try {
-    borrowers = await records('borrower');
-  } catch (e) {
-    groupRollup = false;
-    console.warn(`borrower records unreadable (${e.status || e.message}) — group rollup disabled`);
-  }
-  return { ...computeConcentration({ loans, borrowers }), groupRollup };
+  const borrowers = await allBorrowers();
+  return { ...computeConcentration({ loans, borrowers }), groupRollup: true };
 }
 
 async function deviations() {
@@ -620,50 +752,72 @@ async function deviations() {
 
 /* ── Portfolio-wide child collections ────────────────────────────────────────
  *
- * Sanction Conditions and Disbursement Tranches are browsable across the whole book
- * because they are Task-backed and therefore readable. Facilities, Collateral and Risk
- * Assessments remain custom-module records and stay unreadable — the module screen says
- * so explicitly rather than showing an empty table. */
+ * All six child entity types are Task- or Issue-backed (BROKE.md #8), so all six are
+ * browsable across the whole book. One tasksOf() fetch per project via splitAllTasks
+ * serves every category — allTaskBackedChildren() is the single fan-out point so
+ * adding a screen never means adding another full portfolio scan. */
+
+async function allTaskBackedChildren() {
+  const loans = await loanProjects();
+  const perLoan = await Promise.all(
+    loans.map(async (l) => ({ l, split: splitAllTasks(await tasksOf(l.projectId), l.loanReference, l.borrowerName) })),
+  );
+  return { loans, perLoan };
+}
 
 async function allConditions() {
-  const loans = await loanProjects();
-  const out = await Promise.all(
-    loans.map(async (l) => {
-      const { conditions } = splitTasks(await tasksOf(l.projectId));
-      return conditions.map((c) => ({
-        id: c.id,
-        'Loan Reference': l.loanReference,
-        'Condition Text': c.conditionText,
-        Category: c.category,
-        'Condition Type': c.conditionType,
-        'Due Date': c.dueDate,
-        'Compliance Status': c.complianceStatus,
-        'Blocks Disbursement': c.blocksDisbursement,
-      }));
-    }),
+  const { perLoan } = await allTaskBackedChildren();
+  return perLoan.flatMap(({ l, split }) =>
+    split.conditions.map((c) => ({
+      id: c.id,
+      'Loan Reference': l.loanReference,
+      'Condition Text': c.conditionText,
+      Category: c.category,
+      'Condition Type': c.conditionType,
+      'Due Date': c.dueDate,
+      'Compliance Status': c.complianceStatus,
+      'Blocks Disbursement': c.blocksDisbursement,
+    })),
   );
-  return out.flat();
 }
 
 async function allTranches() {
-  const loans = await loanProjects();
-  const out = await Promise.all(
-    loans.map(async (l) => {
-      const { tranches } = splitTasks(await tasksOf(l.projectId));
-      return tranches.map((t) => ({
-        id: t.id,
-        'Loan Reference': l.loanReference,
-        'Tranche No': t.trancheNo,
-        'Amount Cr': t.amountCr,
-        'Scheduled Date': t.scheduledDate,
-        'Actual Disbursement Date': t.actualDate,
-        'Payment Mode': t.mode,
-        'Tranche Status': t.trancheStatus,
-        'Blocked Reason': t.blockedReason,
-      }));
-    }),
+  const { perLoan } = await allTaskBackedChildren();
+  return perLoan.flatMap(({ l, split }) =>
+    split.tranches.map((t) => ({
+      id: t.id,
+      'Loan Reference': l.loanReference,
+      'Tranche No': t.trancheNo,
+      'Amount Cr': t.amountCr,
+      'Scheduled Date': t.scheduledDate,
+      'Actual Disbursement Date': t.actualDate,
+      'Payment Mode': t.mode,
+      'Tranche Status': t.trancheStatus,
+      'Blocked Reason': t.blockedReason,
+    })),
   );
-  return out.flat();
+}
+
+async function allFacilities() {
+  const { perLoan } = await allTaskBackedChildren();
+  return perLoan.flatMap(({ split }) => split.facilities);
+}
+
+async function allCollateral() {
+  const { perLoan } = await allTaskBackedChildren();
+  return perLoan.flatMap(({ split }) => split.collateral);
+}
+
+async function allRiskAssessments() {
+  const { perLoan } = await allTaskBackedChildren();
+  return perLoan.flatMap(({ split }) => split.risk);
+}
+
+async function allBorrowers() {
+  const { perLoan } = await allTaskBackedChildren();
+  // Exactly one profile task per borrower, on its host loan file — see
+  // scripts/seed-workflow.mjs. Filter rather than dedupe: there is nothing to collapse.
+  return perLoan.flatMap(({ split }) => split.borrowerProfiles);
 }
 
 /* ── Writes ─────────────────────────────────────────────────────────────────── */
@@ -671,9 +825,7 @@ async function allTranches() {
 async function transition(ref, name, note, session) {
   // Recorded as a comment on the project so the audit trail lives in Zoho Projects,
   // not in a log file we control.
-  const loans = await loanProjects();
-  const loan = loans.find((l) => l.loanReference === ref);
-  if (!loan) throw new Error(`Unknown loan reference ${ref}`);
+  const loan = await findLoan(ref);
 
   await zoho('POST', `/portal/${PORTAL}/projects/${loan.projectId}/comments`, {
     content: `[${name}] by ${session.name} (${session.title})${note ? ` — ${note}` : ''}`,
@@ -689,17 +841,101 @@ async function decideDeviation(id, { decision, note }, session) {
   return { ok: true, id, decision };
 }
 
-async function verifyCondition(id, body, session) {
-  return { ok: true, id, status: body.status, verifiedBy: session.name };
+/** Locate the loan file a task lives on. Every write needs this because a task ID
+ * alone doesn't say which project's task list to PATCH — Zoho nests tasks under
+ * /projects/{id}/tasks, there is no portal-wide task-by-id route. */
+async function findLoan(ref) {
+  const loans = await loanProjects();
+  const loan = loans.find((l) => l.loanReference === ref);
+  if (!loan) throw new Error(`Unknown loan reference ${ref}`);
+  return loan;
 }
 
-async function releaseTranche(id, session) {
+/** Replace one `Label: value` line in a task description, leaving the rest intact.
+ * Case-insensitive on the label since Zoho's UI and our own writer are not
+ * guaranteed to agree on casing at every call site. */
+function replaceKV(description, label, value) {
+  const re = new RegExp(`^\\s*${label}\\s*:.*$`, 'i');
+  const lines = String(description || '').split('\n');
+  let replaced = false;
+  const out = lines.map((line) => {
+    if (re.test(line)) {
+      replaced = true;
+      return `${label}: ${value}`;
+    }
+    return line;
+  });
+  if (!replaced) out.push(`${label}: ${value}`);
+  return out.join('\n');
+}
+
+async function patchTask(projectId, taskId, body) {
+  await zoho('PATCH', `/portal/${PORTAL}/projects/${projectId}/tasks/${taskId}`, body);
+  // The 45s cache (BROKE.md #11) would otherwise show the pre-write state for up to
+  // 45 seconds after a user just took the action — invalidate immediately instead.
+  invalidateProject(projectId);
+}
+
+async function verifyCondition(id, { status = 'Complied', ref } = {}, session) {
+  if (!ref) throw new Error('verifyCondition requires a loan reference');
+  const loan = await findLoan(ref);
+  const tasks = await tasksOf(loan.projectId);
+  const task = tasks.find((t) => String(t.id) === String(id));
+  if (!task) throw new Error(`Condition ${id} not found on ${ref}`);
+
+  const description = replaceKV(task.description, 'Status', status);
+  await patchTask(loan.projectId, id, { description });
+  await zoho('POST', `/portal/${PORTAL}/projects/${loan.projectId}/tasks/${id}/comments`, {
+    content: `Marked ${status} by ${session.name} (${session.title})`,
+  }).catch(() => null);
+
+  return { ok: true, id, status, verifiedBy: session.name };
+}
+
+async function releaseTranche(id, { ref } = {}, session) {
+  if (!ref) throw new Error('releaseTranche requires a loan reference');
+  const loan = await findLoan(ref);
+  const tasks = await tasksOf(loan.projectId);
+  const task = tasks.find((t) => String(t.id) === String(id));
+  if (!task) throw new Error(`Tranche ${id} not found on ${ref}`);
+
+  const tm = (task.name || '').match(TRANCHE_RE);
+  if (!tm) throw new Error(`Task ${id} on ${ref} is not a disbursement tranche`);
+
+  // The gate that makes this demo mean something: refuse the release if a
+  // blocking pre-disbursement condition on this same file is still open, and say
+  // which one — this is the invariant SPEC.md §12 #24 exists to protect.
+  const { conditions } = splitAllTasks(tasks, ref, loan.borrowerName);
+  const blocker = conditions.find((c) => c.blocksDisbursement && c.complianceStatus === 'Open');
+  if (blocker) {
+    // `error` is what api.js surfaces to the UI on a non-2xx response; without it the
+    // client shows a generic "Request failed (409)" instead of the actual reason.
+    return { ok: false, blocked: true, id, reason: blocker.conditionText, error: `Blocked: ${blocker.conditionText}` };
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const newName = task.name.replace(/^(\[Tranche \d+\])\s*\S+/, '$1 Released');
+  const description = replaceKV(
+    replaceKV(task.description, 'Actual', today),
+    'Released By',
+    session.name,
+  );
+
+  await patchTask(loan.projectId, id, { name: newName, description });
+  await zoho('POST', `/portal/${PORTAL}/projects/${loan.projectId}/tasks/${id}/comments`, {
+    content: `Tranche released by ${session.name} (${session.title})`,
+  }).catch(() => null);
+
   return { ok: true, id, releasedBy: session.name };
 }
 
 module.exports = {
   allConditions,
   allTranches,
+  allFacilities,
+  allCollateral,
+  allRiskAssessments,
+  allBorrowers,
   pipeline,
   loanFile,
   dashboard,
