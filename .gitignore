@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.catalystcache/
+.env
+.DS_Store
+*.log
