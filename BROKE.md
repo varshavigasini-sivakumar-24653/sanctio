@@ -302,3 +302,30 @@ no warning, just a different derived name than every other field got. Cause unco
 (likely a reserved-name collision somewhere in the portal's shared namespace). Always
 read the `field_name` back off the create response rather than assuming it matches the
 label — the same lesson as #3, but this time the label wasn't unusual at all.
+
+---
+
+## 13. `catalyst deploy` wipes every console-configured environment variable on the function
+
+Ran `catalyst deploy --only functions` to ship a backend fix. It succeeded, but the live
+app immediately started failing every sign-in with `Server is missing its session
+secret`. `functions/sanctio_api/catalyst-config.json` has `"env_variables": {}` — scaffolded
+empty by the CLI when the function was first added (#nothing to do with secrets at the
+time) and never revisited. Deploying a function is apparently **authoritative, not
+additive**: it pushed that empty object and silently deleted `SESSION_SECRET` and all six
+`ZOHO_*` variables that had been set directly in the Catalyst console. No warning, no
+confirmation prompt — the deploy reported success.
+
+**Recovery:** restore the variables via the Catalyst console (Functions → sanctio_api →
+Settings → Environment Variables) or the Catalyst API. There's no undo.
+
+**Why the fix isn't "populate `env_variables` in the config file":** that file is
+git-tracked (`git ls-files` confirms it — unlike `.env`, which is gitignored). Filling it
+in with the real `ZOHO_CLIENT_SECRET` and refresh token would commit live credentials to
+source control, which is worse than the outage.
+
+**The actual rule, until Catalyst ships something better:** never run `catalyst deploy`
+(bare, or `--only functions`) without immediately re-checking the function's environment
+variables afterward — console UI, or `CatalystbyZoho_List_All_Functions` if you have the
+MCP connector — and restoring them if they're gone. Treat every function deploy as
+destructive to env vars by default, not just the first one that surprised us.
