@@ -92,6 +92,23 @@ export default function LoanFile() {
   }
 
   if (error) {
+    // A wrong or stale reference isn't a load failure — "Failed to load" + Retry
+    // just repeats the same 404, so it never actually helps.
+    if (error.status === 404) {
+      return (
+        <div className="p-6">
+          <EmptyState
+            title="No loan file matches that reference"
+            hint={`"${ref}" isn't in the book. Check the reference and try again.`}
+            action={
+              <Link to="/pipeline" className="btn btn-secondary">
+                Back to Pipeline
+              </Link>
+            }
+          />
+        </div>
+      );
+    }
     return (
       <div className="p-6">
         <ErrorState message={error.message} onRetry={reload} />

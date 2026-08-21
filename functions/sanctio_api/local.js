@@ -6,6 +6,26 @@
 //
 // Not used in production — catalyst.json points at index.js.
 
+// No dotenv dependency in this package — a few lines here beats adding one. Reads
+// the repo-root .env so `node local.js` works no matter how it's launched (a plain
+// shell, an editor's run button, a process manager) instead of silently depending on
+// whichever shell happened to have the vars exported. A launcher that already
+// exported real env vars still wins — this only fills in what's missing.
+{
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const envPath = path.join(__dirname, '..', '..', '.env');
+  if (fs.existsSync(envPath)) {
+    for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const m = /^\s*([\w.-]+)\s*=\s*(.*)?\s*$/.exec(line);
+      if (!m || line.trim().startsWith('#')) continue;
+      const key = m[1];
+      const value = (m[2] || '').replace(/^['"]|['"]$/g, '');
+      if (!(key in process.env)) process.env[key] = value;
+    }
+  }
+}
+
 const app = require('./index');
 
 const PORT = process.env.PORT || 3001;

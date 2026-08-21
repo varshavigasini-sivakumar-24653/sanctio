@@ -104,7 +104,7 @@ export default function CreditDesk() {
   const decide = async (dev, decision, note) => {
     setBusy(true);
     try {
-      await api.decideDeviation(dev.id, decision, note);
+      await api.decideDeviation(dev.id, decision, note, dev.loanReference);
       reload();
     } catch (e) {
       alert(e.message);

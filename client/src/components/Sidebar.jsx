@@ -15,9 +15,13 @@ import { cn } from '../lib/cn';
  * Mixing them would bury the pipeline among six lookup tables. The work comes first
  * because that is what someone signs in to do; the modules are reference data. */
 
+// Credit Desk only does anything for the Credit & Risk Officer — every deviation
+// decision on it is gated on the 'deviation' capability (CreditDesk.jsx), so a
+// Relationship Manager or Operations user has nothing to do there. Pipeline and Deal
+// Desk stay unrestricted: both are read-only views useful to every role.
 const WORK = [
   { to: '/pipeline', label: 'Pipeline', icon: KanbanSquare },
-  { to: '/credit-desk', label: 'Credit Desk', icon: ScrollText },
+  { to: '/credit-desk', label: 'Credit Desk', icon: ScrollText, capability: 'deviation' },
   { to: '/deal-desk', label: 'Deal Desk', icon: Handshake },
 ];
 
@@ -171,6 +175,9 @@ export function AccountMenu({ compact = false }) {
 }
 
 export default function Sidebar() {
+  const { can } = useAuth();
+  const visibleWork = WORK.filter((item) => !item.capability || can(item.capability));
+
   return (
     <nav
       aria-label="Main"
@@ -185,7 +192,7 @@ export default function Sidebar() {
         <span className="px-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
           Work
         </span>
-        {WORK.map((item, i) => (
+        {visibleWork.map((item, i) => (
           <motion.div
             key={item.to}
             initial={{ opacity: 0, x: -6 }}

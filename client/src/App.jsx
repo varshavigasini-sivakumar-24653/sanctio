@@ -334,15 +334,10 @@ function TopBar() {
       <div className="grow" />
 
       <div className="row gap-2">
-        {onPipeline ? (
+        {onPipeline && (
           <>
             <FilterPopover loans={loans} />
             <QuarterPopover loans={loans} />
-          </>
-        ) : (
-          <>
-            <NotHerePopover icon={Filter} label="Filter" note="Filters apply to the Pipeline board — switch there to use them." />
-            <NotHerePopover icon={Calendar} label="All time" note="Quarter filtering applies to the Pipeline board — switch there to use it." />
           </>
         )}
         <NewApplicationButton />

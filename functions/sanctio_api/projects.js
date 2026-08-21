@@ -484,6 +484,7 @@ async function cached(key, fn) {
 function invalidateProject(projectId) {
   cache.delete(`tasks:${projectId}`);
   cache.delete(`issues:${projectId}`);
+  cache.delete(`phases:${projectId}`);
 }
 
 const tasksOf = (projectId) =>
@@ -557,7 +558,7 @@ async function fetchLoanProjects() {
       daysInStage,
       daysOver: slaDays && daysInStage ? Math.max(daysInStage - slaDays, 0) : 0,
       owner: p.owner?.full_name || p.owner_name || null,
-      openIssues: (p.issues?.open_count ?? 0) + (p.issues?.closed_count ?? 0),
+      openIssues: p.issues?.open_count ?? 0,
       originatedOn: p.created_time || null,
     };
     });
@@ -586,6 +587,18 @@ const SECTORS = [
 ];
 const FIRST_STAGE = 'Origination and Lead Capture';
 const FIRST_STAGE_SLA_DAYS = 2;
+
+/* The 7 pipeline phases and their SLA — docs/SPEC.md §3. Order matters: advanceStage
+ * walks this list to find what "next" means for a given loan file. */
+const STAGE_SEQUENCE = [
+  { name: FIRST_STAGE, slaDays: FIRST_STAGE_SLA_DAYS },
+  { name: 'Document Collection and KYC', slaDays: 5 },
+  { name: 'Credit Appraisal', slaDays: 7 },
+  { name: 'Valuation and Legal Due Diligence', slaDays: 10 },
+  { name: 'Risk and Sanction', slaDays: 5 },
+  { name: 'Documentation and Disbursement', slaDays: 7 },
+  { name: 'Post Disbursement Monitoring', slaDays: null },
+];
 
 // Phases want MM-DD-YYYY; everything else (tasks, project start_date, custom Date
 // fields) wants YYYY-MM-DD. Same API, same request shape, different format — see
@@ -883,7 +896,13 @@ async function deviations() {
   const withIssues = loans.filter((l) => l.openIssues > 0 || l.openIssues === undefined);
 
   const all = await Promise.all(
-    withIssues.map(async (l) => mapIssues(await issuesOf(l.projectId), l)),
+    withIssues.map(async (l) => {
+      const issues = await issuesOf(l.projectId);
+      // A decided deviation is a Closed issue (see decideDeviation) — exclude it, or
+      // every approved/rejected deviation keeps showing up as still awaiting a decision.
+      const open = issues.filter((i) => !i.status?.is_closed_type);
+      return mapIssues(open, l);
+    }),
   );
   const flat = all.flat();
   flat.sort((a, b) => String(b.createdOn).localeCompare(String(a.createdOn)));
@@ -974,10 +993,19 @@ async function transition(ref, name, note, session) {
   return { ok: true, transition: name, loanReference: ref };
 }
 
-async function decideDeviation(id, { decision, note }, session) {
+async function decideDeviation(id, { decision, note, ref } = {}, session) {
+  if (!ref) throw new Error('decideDeviation requires a loan reference');
+  const loan = await findLoan(ref);
+
   await zoho('POST', `/portal/${PORTAL}/issues/${id}/comments`, {
     content: `[${decision}] by ${session.name} (${session.title}) — ${note}`,
   }).catch(() => null);
+
+  // Close the issue so the decision actually sticks — the comment above is only an
+  // audit trail. Without this, decide() never changes anything the deviations() list
+  // filters on, so the same "pending" card reappears after every approve or reject.
+  await patchIssue(loan.projectId, id, { status: { id: ISSUE_STATUS_CLOSED_ID } });
+
   return { ok: true, id, decision };
 }
 
@@ -1015,6 +1043,16 @@ async function patchTask(projectId, taskId, body) {
   // 45 seconds after a user just took the action — invalidate immediately instead.
   invalidateProject(projectId);
 }
+
+async function patchIssue(projectId, issueId, body) {
+  await zoho('PATCH', `/portal/${PORTAL}/projects/${projectId}/issues/${issueId}`, body);
+  invalidateProject(projectId);
+}
+
+/* The default Zoho Projects issue workflow (Open/InProgress/ToBeTested/Closed/Reopen).
+ * The status field is global_scope, and this id is verified identical across every
+ * project in this portal — so it's safe to hardcode rather than look it up per decision. */
+const ISSUE_STATUS_CLOSED_ID = '475748000000075057';
 
 async function verifyCondition(id, { status = 'Complied', ref } = {}, session) {
   if (!ref) throw new Error('verifyCondition requires a loan reference');

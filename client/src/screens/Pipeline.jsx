@@ -1,7 +1,6 @@
-import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { GripVertical, Plus } from 'lucide-react';
+import { GripVertical } from 'lucide-react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { api } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
@@ -106,30 +105,7 @@ function Column({ stage, loans, maxTotal, index }) {
           loans.map((l, i) => <LoanCard key={l.loanReference} loan={l} index={i} />)
         )}
       </div>
-
-      <AddLoanAffordance stage={stage} />
     </div>
-  );
-}
-
-/** Origination happens through the Relationship Manager workflow, not a dialog here —
- * there's no create-loan-file endpoint to back this yet. Rather than a dead button,
- * clicking it says so plainly, same pattern as the "Ask LoanFlow AI" card. */
-function AddLoanAffordance({ stage }) {
-  const [clicked, setClicked] = useState(false);
-  if (clicked) {
-    return <p className="t-meta px-1">New files are originated via the Relationship Manager workflow.</p>;
-  }
-  return (
-    <button
-      type="button"
-      onClick={() => setClicked(true)}
-      className="row gap-1.5 rounded-lg px-1 py-1.5 text-[12.5px] font-medium text-[var(--text-muted)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text-primary)]"
-      aria-label={`Add loan to ${stage}`}
-    >
-      <Plus size={14} />
-      Add loan
-    </button>
   );
 }
 
