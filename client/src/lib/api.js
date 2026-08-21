@@ -96,6 +96,7 @@ export const api = {
   createLoan: (body) => request('POST', '/loans', body),
   transition: (ref, transition, note) =>
     request('POST', `/loans/${encodeURIComponent(ref)}/transition`, { transition, note }),
+  advanceStage: (ref) => request('POST', `/loans/${encodeURIComponent(ref)}/advance-stage`),
   decideDeviation: (id, decision, note, ref) =>
     request('POST', `/deviations/${id}/decide`, { decision, note, ref }),
   verifyCondition: (id, ref, body) => request('POST', `/conditions/${id}/verify`, { ...body, ref }),

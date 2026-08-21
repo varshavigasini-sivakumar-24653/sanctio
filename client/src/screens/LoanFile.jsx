@@ -78,7 +78,20 @@ export default function LoanFile() {
   const { ref } = useParams();
   const { can } = useAuth();
   const [tab, setTab] = useState('Facilities');
+  const [advancing, setAdvancing] = useState(false);
   const { data, error, loading, reload } = useAsync(() => api.loanFile(ref), [ref]);
+
+  const advanceStage = async () => {
+    setAdvancing(true);
+    try {
+      await api.advanceStage(ref);
+      reload();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setAdvancing(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -166,8 +179,20 @@ export default function LoanFile() {
         </div>
       </div>
 
-      <div className="card p-5">
+      <div className="card p-5 stack gap-12">
         <StageRail currentStage={loan.currentStage} stageTat={loan.stageTat} />
+        {loan.currentStage !== STAGES[STAGES.length - 1] && (
+          <div className="row">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={advancing}
+              onClick={advanceStage}
+            >
+              {advancing ? 'Advancing…' : 'Advance to next stage'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Summary + tabs */}

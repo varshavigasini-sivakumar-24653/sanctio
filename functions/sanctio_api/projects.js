@@ -485,6 +485,10 @@ function invalidateProject(projectId) {
   cache.delete(`tasks:${projectId}`);
   cache.delete(`issues:${projectId}`);
   cache.delete(`phases:${projectId}`);
+  // Closing a deviation, verifying a condition, etc. can change what the portfolio-
+  // level project list itself reports (e.g. openIssues) — drop it too, not just this
+  // project's own caches, or that count can stay stale for up to CACHE_TTL_MS.
+  cache.delete('projects');
 }
 
 const tasksOf = (projectId) =>
@@ -993,6 +997,59 @@ async function transition(ref, name, note, session) {
   return { ok: true, transition: name, loanReference: ref };
 }
 
+/** Moves a loan file to the next of the 7 pipeline phases (docs/SPEC.md §3) — this is
+ * what the Pipeline board's stage columns are supposed to reflect, and previously
+ * nothing on the write side ever changed a file's Current Stage, so files were stuck
+ * in Origination regardless of what actually happened to them. */
+async function advanceStage(ref, session) {
+  const loan = await findLoan(ref);
+  const idx = STAGE_SEQUENCE.findIndex((s) => s.name === loan.currentStage);
+  if (idx === -1) throw new Error(`${ref} is at an unrecognized stage "${loan.currentStage}"`);
+  if (idx === STAGE_SEQUENCE.length - 1) {
+    throw new Error(`${ref} is already at the final stage (${loan.currentStage})`);
+  }
+  const next = STAGE_SEQUENCE[idx + 1];
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { byLabel } = await fields('projects');
+  const custom = {};
+  const set = (label, value) => {
+    const api = byLabel.get(label);
+    if (api) custom[api] = value;
+  };
+  set('Current Stage', next.name);
+  set('Stage Entered On', today);
+  // Post Disbursement Monitoring is ongoing — no SLA — so leave the field as-is
+  // rather than risk Zoho rejecting a null on a Double custom field.
+  if (next.slaDays != null) set('Stage SLA Days', next.slaDays);
+
+  await zoho('PATCH', `/portal/${PORTAL}/projects/${loan.projectId}`, custom);
+  invalidateProject(loan.projectId);
+
+  // Close out the phase span the file is leaving, so its TAT stops accruing, and open
+  // a new one for the phase it's entering — this is what makes StageRail's per-stage
+  // day counts real instead of frozen at however long the first phase happened to be.
+  const phases = await phasesOf(loan.projectId);
+  const current = phases.find((ph) => ph.name === loan.currentStage && !ph.end_date);
+  if (current) {
+    await zoho(
+      'PATCH',
+      `/portal/${PORTAL}/projects/${loan.projectId}/phases/${current.id}`,
+      { end_date: usDate(today) },
+    ).catch(() => null);
+  }
+  await zoho('POST', `/portal/${PORTAL}/projects/${loan.projectId}/phases`, {
+    name: next.name,
+    start_date: usDate(today),
+  }).catch(() => null);
+
+  await zoho('POST', `/portal/${PORTAL}/projects/${loan.projectId}/comments`, {
+    content: `[Advanced] ${loan.currentStage} -> ${next.name}, by ${session.name} (${session.title})`,
+  }).catch(() => null);
+
+  return { ok: true, loanReference: ref, previousStage: loan.currentStage, currentStage: next.name };
+}
+
 async function decideDeviation(id, { decision, note, ref } = {}, session) {
   if (!ref) throw new Error('decideDeviation requires a loan reference');
   const loan = await findLoan(ref);
@@ -1122,6 +1179,7 @@ module.exports = {
   deviations,
   records,
   transition,
+  advanceStage,
   decideDeviation,
   verifyCondition,
   releaseTranche,

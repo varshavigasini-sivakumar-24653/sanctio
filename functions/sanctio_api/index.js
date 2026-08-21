@@ -174,7 +174,11 @@ app.get('/api/modules/:module', requireSession, async (req, res, next) => {
 
 app.get('/api/borrowers', requireSession, async (_req, res, next) => {
   try {
-    res.json(await projects.records('borrower'));
+    // Not projects.records('borrower') — that's the custom-module path a self-client
+    // token can't reliably read back (BROKE.md #8). Borrowers are Task-backed, same
+    // as every other child entity; allBorrowers() is the path /api/modules/borrower
+    // already uses successfully.
+    res.json(await projects.allBorrowers());
   } catch (e) {
     next(e);
   }
@@ -227,6 +231,18 @@ app.post(
       res.json(
         await projects.transition(req.params.ref, req.body.transition, req.body.note, req.session),
       );
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+app.post(
+  '/api/loans/:ref/advance-stage',
+  requireSession,
+  async (req, res, next) => {
+    try {
+      res.json(await projects.advanceStage(req.params.ref, req.session));
     } catch (e) {
       next(e);
     }
