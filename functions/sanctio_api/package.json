@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "Sanctio BFF — auth, role enforcement, Zoho Projects proxy",
   "main": "index.js",
+  "scripts": {
+    "start": "node local.js",
+    "dev": "node --watch local.js"
+  },
   "dependencies": {
     "express": "^4.19.2"
   }

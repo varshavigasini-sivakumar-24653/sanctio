@@ -94,6 +94,8 @@ export const api = {
 
   // Writes
   createLoan: (body) => request('POST', '/loans', body),
+  addBorrower: (ref, body) => request('POST', `/loans/${encodeURIComponent(ref)}/borrowers`, body),
+  addFacility: (ref, body) => request('POST', `/loans/${encodeURIComponent(ref)}/facilities`, body),
   transition: (ref, transition, note) =>
     request('POST', `/loans/${encodeURIComponent(ref)}/transition`, { transition, note }),
   advanceStage: (ref) => request('POST', `/loans/${encodeURIComponent(ref)}/advance-stage`),

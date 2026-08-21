@@ -79,7 +79,13 @@ app.get('/api/pipeline', requireSession, async (_req, res, next) => {
 // registration order, not by specificity, so "options" would otherwise be read as
 // a loan reference and 404 as "Loan file not found".
 app.get('/api/loans/options', requireSession, (_req, res) => {
-  res.json({ products: projects.LOAN_PRODUCTS, sectors: projects.SECTORS });
+  res.json({
+    products: projects.LOAN_PRODUCTS,
+    sectors: projects.SECTORS,
+    facilityTypes: projects.FACILITY_TYPES,
+    entityRoles: projects.ENTITY_ROLES,
+    internalRatings: projects.INTERNAL_RATINGS,
+  });
 });
 
 app.get('/api/loans/:ref', requireSession, async (req, res, next) => {
@@ -216,6 +222,32 @@ app.post(
         req.session,
       );
       res.status(201).json({ loan });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+app.post(
+  '/api/loans/:ref/borrowers',
+  requireSession,
+  requireCapability('borrower'),
+  async (req, res, next) => {
+    try {
+      res.status(201).json(await projects.addBorrower(req.params.ref, req.body, req.session));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+app.post(
+  '/api/loans/:ref/facilities',
+  requireSession,
+  requireCapability('facility'),
+  async (req, res, next) => {
+    try {
+      res.status(201).json(await projects.addFacility(req.params.ref, req.body, req.session));
     } catch (e) {
       next(e);
     }

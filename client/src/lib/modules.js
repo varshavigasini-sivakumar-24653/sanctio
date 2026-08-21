@@ -13,6 +13,7 @@ export const MODULES = [
     blurb: 'Corporate entities, co-borrowers and guarantors',
     title: 'name',
     columns: [
+      { key: 'Loan Reference', label: 'Loan', type: 'ref', width: 120 },
       { key: 'name', label: 'Entity', width: 220 },
       { key: 'Entity Role', label: 'Role', type: 'pill', width: 110 },
       { key: 'Industry Sector', label: 'Sector', width: 140 },

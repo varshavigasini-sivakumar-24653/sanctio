@@ -577,6 +577,9 @@ async function fetchLoanProjects() {
  * only recipes proven to work against this portal (BROKE.md #9). */
 
 const LOAN_PRODUCTS = ['Working Capital', 'Term Loan', 'Equipment Finance', 'Project Finance', 'Trade Finance'];
+const FACILITY_TYPES = ['Term Loan', 'Cash Credit', 'Overdraft', 'Bank Guarantee', 'Letter of Credit', 'WCDL'];
+const ENTITY_ROLES = ['Borrower', 'Co-Borrower', 'Guarantor'];
+const INTERNAL_RATINGS = ['AAA', 'AA', 'A', 'BBB', 'BB', 'B', 'C', 'D'];
 const SECTORS = [
   'Agri Processing',
   'Auto Components',
@@ -735,8 +738,9 @@ async function loanFile(ref) {
   ]);
 
   // One pass over this project's tasks serves conditions, tranches, facilities,
-  // collateral and risk — all six child entity types ride on Tasks (BROKE.md #8).
-  const { conditions, tranches, facilities, collateral, risk } = splitAllTasks(
+  // collateral, risk and borrower profiles — all six child entity types ride on
+  // Tasks (BROKE.md #8).
+  const { conditions, tranches, facilities, collateral, risk, borrowerProfiles } = splitAllTasks(
     tasks,
     ref,
     loan.borrowerName,
@@ -755,6 +759,7 @@ async function loanFile(ref) {
 
   return {
     loan: { ...loan, stageTat },
+    borrowers: borrowerProfiles,
     facilities,
     collateral,
     risk: risk.map((r) => ({
@@ -980,7 +985,12 @@ async function allBorrowers() {
   const { perLoan } = await allTaskBackedChildren();
   // Exactly one profile task per borrower, on its host loan file — see
   // scripts/seed-workflow.mjs. Filter rather than dedupe: there is nothing to collapse.
-  return perLoan.flatMap(({ split }) => split.borrowerProfiles);
+  // 'Loan Reference' is the key client/lib/modules.js's generic 'ref' column type
+  // looks for — without it, the portfolio-wide Borrowers list has no way back to the
+  // loan file each profile actually lives on, unlike every other module's table.
+  return perLoan.flatMap(({ split }) =>
+    split.borrowerProfiles.map((b) => ({ 'Loan Reference': b.hostLoanReference, ...b })),
+  );
 }
 
 /* ── Writes ─────────────────────────────────────────────────────────────────── */
@@ -1074,6 +1084,67 @@ async function findLoan(ref) {
   const loan = loans.find((l) => l.loanReference === ref);
   if (!loan) throw new Error(`Unknown loan reference ${ref}`);
   return loan;
+}
+
+/** Every child record is a Task on the loan's own Project (BROKE.md #8) — creating
+ * one is just posting a Task with the right `[Marker]` name prefix splitAllTasks()
+ * already knows how to parse. No tasklist needed (BROKE.md #9). */
+async function createTask(projectId, body) {
+  await zoho('POST', `/portal/${PORTAL}/projects/${projectId}/tasks`, body);
+  invalidateProject(projectId);
+}
+
+/** Originating a loan file only creates the Project — nothing about the borrower or
+ * the facilities being requested exists until someone adds them. This is that "someone
+ * adds them" step: SPEC.md §3 lists "Borrower + Facilities created" as the actual exit
+ * gate for the Origination stage, so without this the stage can never honestly close. */
+async function addBorrower(ref, { entityName, entityRole, industrySector, annualTurnoverCr, internalRating }, session) {
+  const name = String(entityName || '').trim();
+  if (!name) throw new Error('Entity name is required');
+  if (!ENTITY_ROLES.includes(entityRole)) throw new Error('Choose a valid entity role');
+
+  const loan = await findLoan(ref);
+  await createTask(loan.projectId, {
+    name: `[Borrower] ${name} (${entityRole})`,
+    description: [
+      `Entity Role: ${entityRole}`,
+      `Industry Sector: ${industrySector || ''}`,
+      `Group Name: ${name}`,
+      `Annual Turnover Cr: ${annualTurnoverCr ?? ''}`,
+      `Internal Rating: ${internalRating || ''}`,
+      `KYC Status: Pending`,
+    ].join('\n'),
+  });
+  await zoho('POST', `/portal/${PORTAL}/projects/${loan.projectId}/comments`, {
+    content: `Borrower "${name}" (${entityRole}) added by ${session.name} (${session.title})`,
+  }).catch(() => null);
+
+  return { ok: true, entityName: name };
+}
+
+async function addFacility(ref, { facilityType, amountRequestedCr, tenorMonths, allInRatePct }, session) {
+  if (!FACILITY_TYPES.includes(facilityType)) throw new Error('Choose a valid facility type');
+  const amount = Number(amountRequestedCr);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('Requested amount must be a positive number');
+
+  const loan = await findLoan(ref);
+  await createTask(loan.projectId, {
+    name: `[Facility] ${facilityType} — Proposed`,
+    description: [
+      `Borrower Name: ${loan.borrowerName}`,
+      `Facility Type: ${facilityType}`,
+      `Amount Requested Cr: ${amount}`,
+      `Amount Sanctioned Cr: `,
+      `Tenor Months: ${tenorMonths || ''}`,
+      `All In Rate Pct: ${allInRatePct || ''}`,
+      `Facility Status: Proposed`,
+    ].join('\n'),
+  });
+  await zoho('POST', `/portal/${PORTAL}/projects/${loan.projectId}/comments`, {
+    content: `Facility "${facilityType}" for Rs ${amount} Cr proposed by ${session.name} (${session.title})`,
+  }).catch(() => null);
+
+  return { ok: true, facilityType, amountRequestedCr: amount };
 }
 
 /** Replace one `Label: value` line in a task description, leaving the rest intact.
@@ -1184,6 +1255,11 @@ module.exports = {
   verifyCondition,
   releaseTranche,
   createLoanFile,
+  addBorrower,
+  addFacility,
   LOAN_PRODUCTS,
   SECTORS,
+  FACILITY_TYPES,
+  ENTITY_ROLES,
+  INTERNAL_RATINGS,
 };

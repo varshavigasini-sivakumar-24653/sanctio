@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Plus } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAsync } from '../lib/useAsync';
 import { Avatar, EmptyState, ErrorState, Money, Pill, Skeleton } from '../components/ui';
 import { SLA_LABEL, date, days, pct, ratio, slaState } from '../lib/format';
 import { useAuth } from '../lib/providers';
 import { toneFor } from '../lib/modules';
+import AddBorrowerModal from '../components/AddBorrowerModal';
+import AddFacilityModal from '../components/AddFacilityModal';
 
 const STAGES = [
   'Origination and Lead Capture',
@@ -72,13 +74,15 @@ function Row({ label, children }) {
   );
 }
 
-const TABS = ['Facilities', 'Collateral', 'Risk', 'Conditions', 'Tranches', 'Audit trail'];
+const TABS = ['Borrowers', 'Facilities', 'Collateral', 'Risk', 'Conditions', 'Tranches', 'Audit trail'];
 
 export default function LoanFile() {
   const { ref } = useParams();
   const { can } = useAuth();
   const [tab, setTab] = useState('Facilities');
   const [advancing, setAdvancing] = useState(false);
+  const [addingBorrower, setAddingBorrower] = useState(false);
+  const [addingFacility, setAddingFacility] = useState(false);
   const { data, error, loading, reload } = useAsync(() => api.loanFile(ref), [ref]);
 
   const advanceStage = async () => {
@@ -129,10 +133,20 @@ export default function LoanFile() {
     );
   }
 
-  const { loan, facilities = [], collateral = [], risk = [], conditions = [], tranches = [], audit = [] } = data;
+  const {
+    loan,
+    borrowers = [],
+    facilities = [],
+    collateral = [],
+    risk = [],
+    conditions = [],
+    tranches = [],
+    audit = [],
+  } = data;
   const tone = slaState(loan.daysInStage, loan.slaDays);
 
   const byTab = {
+    Borrowers: borrowers,
     Facilities: facilities,
     Collateral: collateral,
     Risk: risk,
@@ -140,6 +154,9 @@ export default function LoanFile() {
     Tranches: tranches,
     'Audit trail': audit,
   };
+
+  const canAddBorrower = tab === 'Borrowers' && can('borrower');
+  const canAddFacility = tab === 'Facilities' && can('facility');
 
   return (
     <div className="stack gap-6 p-6">
@@ -239,13 +256,28 @@ export default function LoanFile() {
           </div>
 
           <div className="p-5">
+            {(canAddBorrower || canAddFacility) && (
+              <div className="row" style={{ justifyContent: 'flex-end', marginBottom: byTab[tab].length ? 12 : 0 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary gap-1.5"
+                  onClick={() => (canAddBorrower ? setAddingBorrower(true) : setAddingFacility(true))}
+                >
+                  <Plus size={14} />
+                  {canAddBorrower ? 'Add borrower' : 'Add facility'}
+                </button>
+              </div>
+            )}
+
             {byTab[tab].length === 0 ? (
               <EmptyState
                 title={`No ${tab.toLowerCase()} yet`}
                 hint={
                   tab === 'Conditions'
                     ? 'Sanction conditions are created when the file is sanctioned.'
-                    : `Nothing recorded against this file at the ${loan.currentStage} stage.`
+                    : canAddBorrower || canAddFacility
+                      ? `Add the first one above to get this file's ${tab.toLowerCase()} on record.`
+                      : `Nothing recorded against this file at the ${loan.currentStage} stage.`
                 }
               />
             ) : (
@@ -254,6 +286,19 @@ export default function LoanFile() {
           </div>
         </div>
       </div>
+
+      <AddBorrowerModal
+        open={addingBorrower}
+        onClose={() => setAddingBorrower(false)}
+        loanRef={loan.loanReference}
+        onAdded={reload}
+      />
+      <AddFacilityModal
+        open={addingFacility}
+        onClose={() => setAddingFacility(false)}
+        loanRef={loan.loanReference}
+        onAdded={reload}
+      />
     </div>
   );
 }
@@ -367,6 +412,28 @@ function TabBody({ tab, rows, can, onChange, loanRef }) {
               <span>PD {pct(r.probabilityOfDefaultPct)}</span>
             </div>
             {r.keyRisks && <span className="t-meta">{r.keyRisks}</span>}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (tab === 'Borrowers') {
+    return (
+      <div className="stack gap-8">
+        {rows.map((b, i) => (
+          <div key={b.id || i} className="row gap-12" style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+            <span className="grow">
+              <span style={{ fontWeight: 600, fontSize: 13 }}>{b.name}</span>
+              <span className="t-meta" style={{ display: 'block' }}>
+                {b['Entity Role']}
+                {b['Industry Sector'] ? ` · ${b['Industry Sector']}` : ''}
+                {b['Group Name'] && b['Group Name'] !== b.name ? ` · ${b['Group Name']} group` : ''}
+              </span>
+            </span>
+            {b['Annual Turnover Cr'] != null && <Money cr={b['Annual Turnover Cr']} bold />}
+            {b['Internal Rating'] && <span className="t-meta num">{b['Internal Rating']}</span>}
+            <Pill tone={toneFor(b['KYC Status'])}>{b['KYC Status'] || 'Pending'}</Pill>
           </div>
         ))}
       </div>
