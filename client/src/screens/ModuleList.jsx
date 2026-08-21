@@ -51,13 +51,34 @@ export default function ModuleList() {
   const mod = moduleByApi(module);
   const [q, setQ] = useState('');
   const [sort, setSort] = useState(null);
+  const [filters, setFilters] = useState({});
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
 
   const { data, error, loading, reload } = useAsync(() => api.moduleRecords(module), [module]);
 
+  // A field's option list comes from the full unfiltered dataset — otherwise picking
+  // a value in one filter would shrink what the others even offer to pick.
+  const filterableColumns = mod?.columns.filter((c) => c.filterable) || [];
+  const filterOptions = useMemo(() => {
+    const rows = data?.rows || [];
+    return Object.fromEntries(
+      filterableColumns.map((col) => [
+        col.key,
+        [...new Set(rows.map((r) => r[col.key]).filter((v) => v != null && v !== ''))].sort(),
+      ]),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
+
+  const activeFilterCount = Object.values(filters).filter(Boolean).length;
+  const clearFilters = () => setFilters({});
+
   const rows = useMemo(() => {
     let out = data?.rows || [];
+    for (const [key, value] of Object.entries(filters)) {
+      if (value) out = out.filter((r) => String(r[key] ?? '') === value);
+    }
     if (q.trim()) {
       const needle = q.trim().toLowerCase();
       out = out.filter((r) =>
@@ -79,13 +100,20 @@ export default function ModuleList() {
       });
     }
     return out;
-  }, [data, q, sort]);
+  }, [data, q, sort, filters]);
 
-  // A page size change, a new search, a re-sort, or switching modules can all strand
-  // the current page past the new end — snap back to page 1 whenever any of them fire.
+  // A page size change, a new search, a re-sort, a filter change, or switching modules
+  // can all strand the current page past the new end — snap back to page 1 on any.
   useEffect(() => {
     setPage(1);
-  }, [q, sort, pageSize, module]);
+  }, [q, sort, filters, pageSize, module]);
+
+  // Filters are per-module — a Facility Status pick shouldn't survive a jump to
+  // Collateral, where that key means nothing (or worse, coincidentally means something
+  // else).
+  useEffect(() => {
+    setFilters({});
+  }, [module]);
 
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -122,6 +150,37 @@ export default function ModuleList() {
           />
         </div>
       </div>
+
+      {filterableColumns.length > 0 && (
+        <div className="row flex-wrap items-center gap-2">
+          {filterableColumns.map((col) => (
+            <select
+              key={col.key}
+              className="input h-8 w-auto px-2 py-0 text-[13px]"
+              value={filters[col.key] || ''}
+              onChange={(e) => setFilters((f) => ({ ...f, [col.key]: e.target.value }))}
+              aria-label={`Filter by ${col.label}`}
+            >
+              <option value="">All {col.label.toLowerCase()}</option>
+              {(filterOptions[col.key] || []).map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          ))}
+          {activeFilterCount > 0 && (
+            <button
+              type="button"
+              className="t-meta"
+              style={{ color: 'var(--accent)', cursor: 'pointer' }}
+              onClick={clearFilters}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
 
       {loading && (
         <div className="card stack gap-2 p-4">

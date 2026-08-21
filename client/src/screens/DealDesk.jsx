@@ -71,7 +71,7 @@ function ApplicationsByStageChart({ loans }) {
   return (
     <div style={{ height: 220 }}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ left: -20, right: 8 }}>
+        <BarChart data={data} margin={{ left: 4, right: 8 }}>
           <CartesianGrid vertical={false} stroke="var(--gridline)" />
           <XAxis dataKey="stage" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={{ stroke: 'var(--axis)' }} tickLine={false} interval={0} angle={-18} textAnchor="end" height={48} />
           <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={28} />
